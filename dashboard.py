@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import urllib.parse
 import html as html_lib
+import os
 
 # ═══════════════════════════════════════════════════════════
 # КОНФИГУРАЦИЯ
@@ -162,7 +163,6 @@ st.markdown("""
     }
     .kpi-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 
-    /* KPI иконки */
     .kpi-icon {
         width: 38px;
         height: 38px;
@@ -238,8 +238,6 @@ st.markdown("""
         display: flex; align-items: center; gap: 14px;
         padding: 12px 14px;
     }
-
-    /* Иконки категорий */
     .cat-icon {
         width: 44px;
         height: 44px;
@@ -252,7 +250,6 @@ st.markdown("""
         font-size: 21px;
         line-height: 1;
     }
-
     .cat-info { flex: 1; min-width: 0; }
     .cat-name {
         font-weight: 600; color: #0F172A; font-size: 14px; margin-bottom: 6px;
@@ -332,7 +329,6 @@ st.markdown("""
     }
     .tx-row:hover { background: #FAFBFC; }
     .tx-row:last-child { border-bottom: none; }
-
     .tx-date {
         width: 46px; text-align: center;
         background: #F1F5F9; border-radius: 10px;
@@ -369,17 +365,13 @@ st.markdown("""
         font-size: 13px !important; border: none !important;
     }
 
-    /* ═══════════════════════════════════════════════════════ */
-    /* ═══              МОБИЛКА                            ═══ */
-    /* ═══════════════════════════════════════════════════════ */
+    /* ═══ МОБИЛКА ═══ */
     @media (max-width: 640px) {
         .block-container {
             padding-left: 1rem !important;
             padding-right: 1rem !important;
         }
         .logo { font-size: 24px; }
-
-        /* HERO: больше нижнего отступа чтобы тени pills не резались */
         .hero {
             padding: 26px 20px 32px 20px;
             border-radius: 24px;
@@ -389,8 +381,6 @@ st.markdown("""
             letter-spacing: -1.5px;
             margin-bottom: 20px;
         }
-
-        /* HERO PILLS */
         .hero-pills { gap: 8px; }
         .pill {
             padding: 7px 14px 7px 7px;
@@ -404,8 +394,6 @@ st.markdown("""
         }
         .pill-value { font-size: 13px; }
         .pill-label { font-size: 9px; letter-spacing: 0.2px; }
-
-        /* KPI */
         .kpi-grid { gap: 10px; }
         .kpi { padding: 16px; }
         .kpi-amount { font-size: 22px; }
@@ -415,13 +403,9 @@ st.markdown("""
             font-size: 16px;
         }
         .kpi-sub { font-size: 11px; }
-
-        /* Графики и списки */
         .chart-card { padding: 16px; border-radius: 16px; }
         .cat-list { padding: 6px; border-radius: 16px; }
         .section-title { font-size: 16px; }
-
-        /* CAT иконка */
         .cat-icon {
             width: 40px;
             height: 40px;
@@ -430,8 +414,6 @@ st.markdown("""
         .cat-row { gap: 12px; padding: 10px 10px; }
         .cat-name { font-size: 13px; }
         .cat-amount { font-size: 13px; }
-
-        /* TX */
         .tx-header { padding: 18px 16px; gap: 12px; }
         .tx-header-icon {
             width: 50px;
@@ -485,13 +467,11 @@ def cat_icon(cat):
 
 
 def hex_to_rgb(h):
-    """'#4F46E5' -> (79, 70, 229)"""
     h = h.lstrip('#')
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
 
 def icon_3d_style(color):
-    """Объёмная иконка с тенью (rgba-based для max совместимости)."""
     r, g, b = hex_to_rgb(color)
     return (
         f"background: linear-gradient(135deg, "
@@ -504,7 +484,6 @@ def icon_3d_style(color):
 
 
 def bar_gradient(color):
-    """Градиент для прогресс-бара категории."""
     r, g, b = hex_to_rgb(color)
     return (
         f"background: linear-gradient(90deg, "
@@ -515,12 +494,28 @@ def bar_gradient(color):
 # ═══════════════════════════════════════════════════════════
 # ДАННЫЕ
 # ═══════════════════════════════════════════════════════════
+def get_credentials(scopes):
+    """
+    Получает Google credentials:
+    - на Streamlit Cloud — из st.secrets["gcp_service_account"]
+    - локально — из файла credentials.json
+    """
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            return Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    except Exception:
+        pass
+    # Локальный режим
+    return Credentials.from_service_account_file('credentials.json', scopes=scopes)
+
+
 @st.cache_data(ttl=300)
 def load_data():
     SHEET_ID = '1JwZWJbjORChtUmuJQiJisSZMrBr5TaBjKSxxuA1HdEU'
     scopes = ['https://www.googleapis.com/auth/spreadsheets',
               'https://www.googleapis.com/auth/drive']
-    creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
+    creds = get_credentials(scopes)
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).sheet1
     df = pd.DataFrame(sheet.get_all_records())
@@ -566,7 +561,6 @@ try:
                 label_visibility="collapsed"
             )
 
-        # Фильтр периода
         if isinstance(period, tuple) and len(period) == 2:
             f_df = df[(df['Дата'].dt.date >= period[0]) &
                       (df['Дата'].dt.date <= period[1])]
@@ -575,7 +569,6 @@ try:
             f_df = df
             days_count = (max_d - min_d).days + 1
 
-        # Расчёты
         inc = f_df[f_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
         exp = f_df[f_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
         balance = inc - exp
@@ -705,7 +698,6 @@ try:
 
             col_donut, col_list = st.columns([1, 1.2])
 
-            # DONUT
             with col_donut:
                 colors_list = [CAT_COLORS[i % len(CAT_COLORS)] for i in range(len(cats))]
                 fig_d = go.Figure(go.Pie(
@@ -731,7 +723,6 @@ try:
                                 config={'displayModeBar': False})
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            # СПИСОК
             with col_list:
                 rows_html = '<div class="cat-list">'
                 for i, (cat, val) in enumerate(cats.items()):
