@@ -1,0 +1,17 @@
+# КРИТИЧНО — секретный ключ Google
+credentials.json
+.streamlit/secrets.toml
+secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Системные
+.DS_Store
+.idea/
+.vscode/
