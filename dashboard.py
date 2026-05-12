@@ -4,22 +4,9 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import plotly.graph_objects as go
 import urllib.parse
-import urllib.request
 import html as html_lib
 import calendar
-import os
 from datetime import timedelta
-from io import BytesIO
-
-# PDF
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                TableStyle, KeepTogether)
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.lib import colors as rl_colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 # ═══════════════════════════════════════════════════════════
 # КОНФИГУРАЦИЯ
@@ -33,7 +20,7 @@ st.set_page_config(
 
 # ═══════════════════════════════════════════════════════════
 # ФИНАНСОВАЯ ЛЕСТНИЦА (этапы дохода в рублях/месяц)
-# Чтобы поменять цели — просто отредактируй этот список
+# Чтобы поменять цели — отредактируй этот список
 # ═══════════════════════════════════════════════════════════
 INCOME_STAGES = [
     (100_000,    '🌱', 'Старт'),
@@ -182,18 +169,14 @@ st.markdown("""
     font-size: 28px; font-weight: 700; letter-spacing: -1px;
     color: #0F172A; line-height: 1; margin-bottom: 10px;
 }
-
-/* Дельта-плашка (сравнение с прошлым периодом) */
 .kpi-delta {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 4px 10px; border-radius: 100px;
-    font-size: 11px; font-weight: 700;
-    margin-top: 2px;
+    font-size: 11px; font-weight: 700; margin-top: 2px;
 }
 .delta-good { background: rgba(0,200,150,0.12); color: #00A578; }
 .delta-bad { background: rgba(255,87,87,0.12); color: #E13C3C; }
 .delta-neutral { background: #F1F5F9; color: #64748B; }
-
 .kpi-sub { font-size: 11px; color: #94A3B8; font-weight: 500; margin-top: 6px; }
 
 .section {
@@ -210,7 +193,6 @@ st.markdown("""
     margin-bottom: 16px;
 }
 
-/* ═══ ФИНАНСОВАЯ ЛЕСТНИЦА ═══ */
 .ladder-hero {
     background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%);
     border-radius: 22px; padding: 22px 24px; color: white;
@@ -239,7 +221,6 @@ st.markdown("""
     height: 100%; border-radius: 100px;
     background: linear-gradient(90deg, #00E5B0, #00C896);
     box-shadow: 0 0 12px rgba(0,229,176,0.5);
-    transition: width 0.6s ease;
 }
 .ladder-bar-info {
     display: flex; justify-content: space-between;
@@ -276,8 +257,7 @@ st.markdown("""
 }
 .ladder-circle-current {
     width: 36px; height: 36px;
-    background: linear-gradient(135deg, #4F46E5, #7C3AED);
-    color: white;
+    background: linear-gradient(135deg, #4F46E5, #7C3AED); color: white;
     box-shadow: 0 6px 14px -2px rgba(79,70,229,0.55),
                 inset 0 1px 0 rgba(255,255,255,0.35);
 }
@@ -286,9 +266,7 @@ st.markdown("""
     border: 2px solid #E2E8F0; font-size: 12px;
 }
 .ladder-info { flex: 1; min-width: 0; }
-.ladder-amount {
-    font-weight: 600; font-size: 14px; color: #0F172A;
-}
+.ladder-amount { font-weight: 600; font-size: 14px; color: #0F172A; }
 .ladder-amount.done { color: #94A3B8; text-decoration: line-through; }
 .ladder-amount.current { font-weight: 700; }
 .ladder-amount.todo { color: #475569; }
@@ -298,22 +276,14 @@ st.markdown("""
 .ladder-status.todo { color: #94A3B8; font-weight: 600; }
 .ladder-emoji { font-size: 19px; flex-shrink: 0; }
 .ladder-emoji.dim { opacity: 0.4; }
-
-/* Текущая ступень — выделена фоном */
 .ladder-row-current {
-    background: #EEF2FF;
-    border-radius: 14px;
-    margin: 4px -8px;
-    padding: 12px 8px;
-    border-bottom: none;
+    background: #EEF2FF; border-radius: 14px;
+    margin: 4px -8px; padding: 12px 8px; border-bottom: none;
 }
 .ladder-row-final {
     background: linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(245,158,11,0.04) 100%);
-    border: 1.5px dashed #F59E0B;
-    border-radius: 14px;
-    margin: 4px -8px 8px -8px;
-    padding: 12px 8px;
-    border-bottom: none;
+    border: 1.5px dashed #F59E0B; border-radius: 14px;
+    margin: 4px -8px 8px -8px; padding: 12px 8px; border-bottom: none;
 }
 .ladder-circle-final {
     background: linear-gradient(135deg, #FBBF24, #F59E0B);
@@ -323,7 +293,6 @@ st.markdown("""
 .ladder-amount.final { color: #92400E; font-weight: 700; }
 .ladder-status.final { color: #B45309; font-weight: 700; }
 
-/* ═══ УБИЙЦЫ БЮДЖЕТА ═══ */
 .killer-list {
     background: white; border-radius: 20px; padding: 6px 16px;
     box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
@@ -354,7 +323,6 @@ st.markdown("""
     font-size: 9px; font-weight: 700;
 }
 
-/* ═══ СПИСОК КАТЕГОРИЙ ═══ */
 .cat-list {
     background: white; border-radius: 20px; padding: 8px;
     box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
@@ -386,7 +354,6 @@ st.markdown("""
 .cat-chev { color: #CBD5E1; font-size: 18px; font-weight: 700; margin-left: 4px; flex-shrink: 0; }
 .cat-link:hover .cat-chev { color: #4F46E5; }
 
-/* ═══ ДЕТАЛЬНЫЙ ВИД ═══ */
 .tx-card {
     background: white; border-radius: 24px;
     box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
@@ -450,25 +417,6 @@ st.markdown("""
 .tx-amount {
     font-family: 'Space Grotesk'; font-weight: 700;
     font-size: 16px; color: #E13C3C; flex-shrink: 0; letter-spacing: -0.3px;
-}
-
-/* ═══ PDF КНОПКА ═══ */
-.stDownloadButton button {
-    width: 100% !important;
-    background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 100%) !important;
-    color: white !important;
-    border: none !important;
-    padding: 16px !important;
-    border-radius: 18px !important;
-    font-size: 14px !important;
-    font-weight: 700 !important;
-    font-family: 'Plus Jakarta Sans' !important;
-    box-shadow: 0 8px 20px -4px rgba(79, 70, 229, 0.4) !important;
-    transition: all 0.2s ease !important;
-}
-.stDownloadButton button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 12px 28px -4px rgba(79, 70, 229, 0.55) !important;
 }
 
 div[data-testid="stDateInput"] > label { display: none !important; }
@@ -591,16 +539,6 @@ def fmt(n):
     return f"{n:,.0f}".replace(",", " ")
 
 
-def fmt_compact(n):
-    """123456 → '123к', 1234567 → '1.2М'"""
-    n = abs(n)
-    if n >= 1_000_000:
-        return f"{n/1_000_000:.1f}М".replace('.0М', 'М')
-    if n >= 1_000:
-        return f"{n/1_000:.0f}к"
-    return f"{n:.0f}"
-
-
 # ═══════════════════════════════════════════════════════════
 # GOOGLE CREDS
 # ═══════════════════════════════════════════════════════════
@@ -639,13 +577,11 @@ def get_last_full_month_income(df):
     if df.empty:
         return 0, None, None
     last_date = df['Дата'].max().date()
-    # Полный ли это месяц?
     days_in_month = calendar.monthrange(last_date.year, last_date.month)[1]
     if last_date.day >= days_in_month:
         month_start = last_date.replace(day=1)
         month_end = last_date
     else:
-        # Прошлый полный месяц
         last_day_prev = last_date.replace(day=1) - timedelta(days=1)
         month_start = last_day_prev.replace(day=1)
         month_end = last_day_prev
@@ -657,9 +593,6 @@ def get_last_full_month_income(df):
 
 
 def find_stage(income, stages):
-    """Возвращает (current_idx, target_value, target_emoji, target_label)
-    current_idx — индекс ещё не пройденной (текущей) ступени.
-    Если все пройдены — возвращает последнюю."""
     for i, (target, emoji, label) in enumerate(stages):
         if income < target:
             return i, target, emoji, label
@@ -667,7 +600,6 @@ def find_stage(income, stages):
 
 
 def get_budget_killers(curr_df, prev_df, top_n=3):
-    """Возвращает топ N категорий с наибольшим РОСТОМ расходов."""
     curr_exp = curr_df[curr_df['Доход/Расход'] == 'Расход']
     prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход']
 
@@ -678,10 +610,9 @@ def get_budget_killers(curr_df, prev_df, top_n=3):
     for cat, curr_val in curr_cats.items():
         prev_val = prev_cats.get(cat, 0)
         if prev_val <= 0:
-            # Новая категория — пропустим (не с чем сравнивать)
             continue
         pct = (curr_val - prev_val) / prev_val * 100
-        if pct > 10:  # Только заметный рост
+        if pct > 10:
             killers.append({
                 'cat': cat, 'prev': prev_val, 'curr': curr_val, 'pct': pct
             })
@@ -693,217 +624,6 @@ def pct_change(curr, prev):
     if prev == 0:
         return None
     return (curr - prev) / prev * 100
-
-
-# ═══════════════════════════════════════════════════════════
-# PDF — генерация отчёта
-# ═══════════════════════════════════════════════════════════
-def get_pdf_font():
-    """Регистрирует шрифт с поддержкой кириллицы. Возвращает имя шрифта."""
-    try:
-        pdfmetrics.getFont('DejaVuSans')
-        return 'DejaVuSans', 'DejaVuSans'  # обычный и жирный одинаковые
-    except Exception:
-        pass
-
-    candidates = [
-        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
-        ('/usr/share/fonts/dejavu/DejaVuSans.ttf',
-         '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf'),
-    ]
-    for reg, bold in candidates:
-        if os.path.exists(reg):
-            try:
-                pdfmetrics.registerFont(TTFont('DejaVuSans', reg))
-                if os.path.exists(bold):
-                    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', bold))
-                    return 'DejaVuSans', 'DejaVuSans-Bold'
-                return 'DejaVuSans', 'DejaVuSans'
-            except Exception:
-                continue
-
-    # Fallback — скачать DejaVuSans
-    tmp_path = '/tmp/DejaVuSans.ttf'
-    if not os.path.exists(tmp_path):
-        try:
-            urllib.request.urlretrieve(
-                'https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans.ttf',
-                tmp_path
-            )
-        except Exception:
-            return 'Helvetica', 'Helvetica-Bold'
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', tmp_path))
-        return 'DejaVuSans', 'DejaVuSans'
-    except Exception:
-        return 'Helvetica', 'Helvetica-Bold'
-
-
-def generate_pdf_report(period_start, period_end, inc, exp, balance,
-                       inc_change, exp_change,
-                       monthly_income, stage_idx, stage_target, stage_label,
-                       killers, cats_breakdown):
-    """Генерирует PDF-отчёт. Возвращает bytes."""
-    font_name, font_bold = get_pdf_font()
-
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                           rightMargin=15*mm, leftMargin=15*mm,
-                           topMargin=15*mm, bottomMargin=15*mm)
-
-    PRIMARY = rl_colors.HexColor('#4F46E5')
-    DARK = rl_colors.HexColor('#0F172A')
-    MUTED = rl_colors.HexColor('#64748B')
-    LIGHT = rl_colors.HexColor('#F1F5F9')
-    GREEN = rl_colors.HexColor('#00A578')
-    RED = rl_colors.HexColor('#E13C3C')
-
-    s_title = ParagraphStyle('title', fontName=font_bold, fontSize=22,
-                             textColor=DARK, spaceAfter=4, leading=26)
-    s_subtitle = ParagraphStyle('subtitle', fontName=font_name, fontSize=11,
-                                textColor=MUTED, spaceAfter=18, leading=14)
-    s_section = ParagraphStyle('section', fontName=font_bold, fontSize=14,
-                               textColor=DARK, spaceAfter=8, spaceBefore=14,
-                               leading=18)
-    s_normal = ParagraphStyle('normal', fontName=font_name, fontSize=10,
-                              textColor=DARK, leading=14)
-    s_label = ParagraphStyle('label', fontName=font_name, fontSize=9,
-                             textColor=MUTED, leading=12)
-
-    elements = []
-
-    # Заголовок
-    elements.append(Paragraph("💎 My Finance · Финансовый отчёт", s_title))
-
-    if period_start and period_end:
-        period_str = (f"Период: {period_start.day} {MONTHS_RU_FULL[period_start.month-1]} "
-                      f"— {period_end.day} {MONTHS_RU_FULL[period_end.month-1]} {period_end.year}")
-    else:
-        period_str = "Период: все данные"
-    elements.append(Paragraph(period_str, s_subtitle))
-
-    # ── Главные показатели ──
-    elements.append(Paragraph("Главные показатели", s_section))
-    main_data = [
-        ['Показатель', 'Значение', 'vs прошлый период'],
-        ['Баланс', f"{fmt(balance)} ₽", '—'],
-        ['Доходы', f"{fmt(inc)} ₽",
-         f"{'+' if (inc_change or 0) >= 0 else ''}{inc_change:.1f}%" if inc_change is not None else '—'],
-        ['Расходы', f"{fmt(exp)} ₽",
-         f"{'+' if (exp_change or 0) >= 0 else ''}{exp_change:.1f}%" if exp_change is not None else '—'],
-    ]
-    t = Table(main_data, colWidths=[55*mm, 60*mm, 50*mm])
-    t.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, 0), font_bold),
-        ('FONTNAME', (0, 1), (-1, -1), font_name),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
-        ('TEXTCOLOR', (0, 0), (-1, 0), DARK),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('LINEBELOW', (0, 0), (-1, -2), 0.4, rl_colors.HexColor('#E2E8F0')),
-    ]))
-    elements.append(t)
-
-    # ── Финансовая лестница ──
-    elements.append(Paragraph("Финансовая лестница", s_section))
-    elements.append(Paragraph(
-        f"Текущий месячный доход: <b>{fmt(monthly_income)} ₽</b> · "
-        f"Этап {stage_idx+1} из {len(INCOME_STAGES)}: <b>{fmt(stage_target)} ₽/мес</b> "
-        f"({stage_label})",
-        s_normal
-    ))
-    elements.append(Spacer(1, 8))
-
-    stages_data = [['#', 'Цель в месяц', 'Статус']]
-    for i, (target, emoji, label) in enumerate(INCOME_STAGES):
-        if monthly_income >= target:
-            status = '✓ пройдено'
-        elif i == stage_idx:
-            pct = (monthly_income / target * 100) if target else 0
-            status = f'→ текущий ({pct:.0f}%)'
-        else:
-            status = '— впереди'
-        stages_data.append([str(i+1), f"{fmt(target)} ₽ — {label}", status])
-
-    t2 = Table(stages_data, colWidths=[12*mm, 100*mm, 53*mm])
-    t2.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, 0), font_bold),
-        ('FONTNAME', (0, 1), (-1, -1), font_name),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
-    ]))
-    elements.append(t2)
-
-    # ── Убийцы бюджета ──
-    if killers:
-        elements.append(Paragraph("Убийцы бюджета · топ-3 категорий с ростом", s_section))
-        k_data = [['Категория', 'Было', 'Стало', 'Рост']]
-        for k in killers:
-            k_data.append([
-                str(k['cat']),
-                f"{fmt(k['prev'])} ₽",
-                f"{fmt(k['curr'])} ₽",
-                f"+{k['pct']:.0f}%"
-            ])
-        t3 = Table(k_data, colWidths=[70*mm, 35*mm, 35*mm, 25*mm])
-        t3.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, 0), font_bold),
-            ('FONTNAME', (0, 1), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-            ('TEXTCOLOR', (3, 1), (3, -1), RED),
-            ('FONTNAME', (3, 1), (3, -1), font_bold),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 7),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
-        ]))
-        elements.append(t3)
-
-    # ── Структура расходов ──
-    if cats_breakdown:
-        elements.append(Paragraph("Структура расходов", s_section))
-        c_data = [['#', 'Категория', 'Сумма', 'Доля']]
-        total_cat = sum(v for _, v in cats_breakdown)
-        for i, (cat, val) in enumerate(cats_breakdown, 1):
-            share = (val / total_cat * 100) if total_cat else 0
-            c_data.append([str(i), str(cat), f"{fmt(val)} ₽", f"{share:.1f}%"])
-        t4 = Table(c_data, colWidths=[12*mm, 100*mm, 35*mm, 18*mm])
-        t4.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, 0), font_bold),
-            ('FONTNAME', (0, 1), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
-            ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
-        ]))
-        elements.append(t4)
-
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Создано в My Finance Dashboard", s_label))
-
-    doc.build(elements)
-    return buf.getvalue()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -938,7 +658,6 @@ try:
         days_count = (p_end - p_start).days + 1
         f_df = df[(df['Дата'].dt.date >= p_start) & (df['Дата'].dt.date <= p_end)]
 
-        # Предыдущий период такой же длины
         prev_end = p_start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=days_count - 1)
         prev_df = df[(df['Дата'].dt.date >= prev_start) & (df['Дата'].dt.date <= prev_end)]
@@ -953,13 +672,12 @@ try:
         sign = "+" if balance >= 0 else "−"
         pace_sign = "+" if monthly_pace >= 0 else "−"
 
-        # Изменения vs прошлый период
         prev_inc = prev_df[prev_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
         prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
         inc_change = pct_change(inc, prev_inc)
         exp_change = pct_change(exp, prev_exp)
 
-        # ── HERO ──
+        # HERO
         hero_html = (
             '<div class="hero">'
             '<div class="hero-label">Общий баланс</div>'
@@ -978,7 +696,7 @@ try:
         )
         st.markdown(hero_html, unsafe_allow_html=True)
 
-        # ── KPI с дельтами ──
+        # KPI с дельтами
         def delta_html(change, good_when_positive=True):
             if change is None:
                 return '<div class="kpi-delta delta-neutral">— нет данных за прошлый период</div>'
@@ -1032,7 +750,6 @@ try:
             unsafe_allow_html=True
         )
 
-        # Фиолетовый блок с текущим положением
         is_final = (monthly_income >= INCOME_STAGES[-1][0])
         if is_final:
             ladder_hero = (
@@ -1063,7 +780,6 @@ try:
             )
         st.markdown(ladder_hero, unsafe_allow_html=True)
 
-        # Список ступеней
         parts = ['<div class="ladder-list">',
                  '<div class="ladder-list-title">Весь путь до 10 млн ₽</div>']
 
@@ -1138,7 +854,7 @@ try:
                     color = '#EC4899'
                     label_txt = '↑ небольшой'
 
-                bg = color + '2E'  # с прозрачностью
+                bg = color + '2E'
                 killer_parts.append(
                     '<div class="killer-row">'
                     f'<div class="killer-icon" style="background:{bg}; color:{color};">{cat_icon(k["cat"])}</div>'
@@ -1210,12 +926,10 @@ try:
         # СТРУКТУРА РАСХОДОВ
         # ═══════════════════════════════════════════════════════════
         exp_df = f_df[f_df['Доход/Расход'] == 'Расход']
-        cats_breakdown = []  # для PDF
 
         if not exp_df.empty:
             cats = exp_df.groupby('Категория')['Сумма'].sum().sort_values(ascending=False)
             total = cats.sum()
-            cats_breakdown = list(cats.items())
 
             st.markdown(
                 '<div class="section">'
@@ -1343,32 +1057,6 @@ try:
 
                 dparts.append('</div>')
                 st.markdown(''.join(dparts), unsafe_allow_html=True)
-
-        # ═══════════════════════════════════════════════════════════
-        # КНОПКА СКАЧАТЬ PDF
-        # ═══════════════════════════════════════════════════════════
-        st.markdown('<div style="margin-top: 32px;"></div>', unsafe_allow_html=True)
-
-        try:
-            pdf_bytes = generate_pdf_report(
-                period_start=p_start, period_end=p_end,
-                inc=inc, exp=exp, balance=balance,
-                inc_change=inc_change, exp_change=exp_change,
-                monthly_income=monthly_income,
-                stage_idx=stage_idx, stage_target=stage_target, stage_label=stage_label,
-                killers=killers,
-                cats_breakdown=cats_breakdown
-            )
-            filename = f"my_finance_{p_start.strftime('%Y-%m-%d')}_{p_end.strftime('%Y-%m-%d')}.pdf"
-            st.download_button(
-                label="📥  Скачать PDF-отчёт",
-                data=pdf_bytes,
-                file_name=filename,
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        except Exception as e:
-            st.warning(f"PDF недоступен: {e}")
 
 except Exception as e:
     st.error(f"Упс! Что-то пошло не так: {e}")
