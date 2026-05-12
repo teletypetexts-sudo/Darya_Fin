@@ -4,8 +4,22 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import plotly.graph_objects as go
 import urllib.parse
+import urllib.request
 import html as html_lib
+import calendar
 import os
+from datetime import timedelta
+from io import BytesIO
+
+# PDF
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                TableStyle, KeepTogether)
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib import colors as rl_colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # ═══════════════════════════════════════════════════════════
 # КОНФИГУРАЦИЯ
@@ -18,412 +32,491 @@ st.set_page_config(
 )
 
 # ═══════════════════════════════════════════════════════════
-# ПРЕМИУМ CSS
+# ФИНАНСОВАЯ ЛЕСТНИЦА (этапы дохода в рублях/месяц)
+# Чтобы поменять цели — просто отредактируй этот список
+# ═══════════════════════════════════════════════════════════
+INCOME_STAGES = [
+    (100_000,    '🌱', 'Старт'),
+    (250_000,    '💪', 'Уверенный рост'),
+    (500_000,    '🎯', 'Стабильность'),
+    (1_000_000,  '🚀', 'Прорыв'),
+    (2_500_000,  '💎', 'Эксперт'),
+    (5_000_000,  '👑', 'Лидер'),
+    (10_000_000, '⭐', 'ФИНАЛ'),
+]
+
+# ═══════════════════════════════════════════════════════════
+# CSS
 # ═══════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap');
 
-    * {
-        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-        -webkit-font-smoothing: antialiased;
-    }
+* {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
 
-    .stApp {
-        background:
-            radial-gradient(ellipse 800px 600px at top left, #EEF2FF 0%, transparent 50%),
-            radial-gradient(ellipse 600px 500px at bottom right, #FEE7E7 0%, transparent 50%),
-            #FAFBFC !important;
-    }
+.stApp {
+    background:
+        radial-gradient(ellipse 800px 600px at top left, #EEF2FF 0%, transparent 50%),
+        radial-gradient(ellipse 600px 500px at bottom right, #FEE7E7 0%, transparent 50%),
+        #FAFBFC !important;
+}
 
-    #MainMenu, footer, header { visibility: hidden; height: 0; }
-    .block-container {
-        padding-top: 1.5rem !important;
-        padding-bottom: 4rem !important;
-        max-width: 1200px !important;
-    }
+#MainMenu, footer, header { visibility: hidden; height: 0; }
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-bottom: 4rem !important;
+    max-width: 1200px !important;
+}
 
-    /* ═══ ЛОГО ═══ */
-    .logo {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 30px;
-        font-weight: 700;
-        background: linear-gradient(135deg, #4F46E5 0%, #00C896 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -1.2px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .logo-emoji { -webkit-text-fill-color: initial; background: none; }
+.logo {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 30px; font-weight: 700;
+    background: linear-gradient(135deg, #4F46E5 0%, #00C896 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1.2px;
+    display: flex; align-items: center; gap: 8px;
+}
+.logo-emoji { -webkit-text-fill-color: initial; background: none; }
 
-    /* ═══ HERO ═══ */
-    .hero {
-        background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%);
-        border-radius: 28px;
-        padding: 36px 40px 42px 40px;
-        color: white;
-        margin: 4px 0 20px 0;
-        position: relative;
-        overflow: hidden;
-        box-shadow: 0 20px 60px -15px rgba(79, 70, 229, 0.45);
-    }
-    .hero::before {
-        content: '';
-        position: absolute;
-        top: -100px; right: -50px;
-        width: 360px; height: 360px;
-        background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%);
-        border-radius: 50%;
-        pointer-events: none;
-    }
-    .hero::after {
-        content: '';
-        position: absolute;
-        bottom: -150px; left: -50px;
-        width: 300px; height: 300px;
-        background: radial-gradient(circle, rgba(236, 72, 153, 0.20) 0%, transparent 70%);
-        border-radius: 50%;
-        pointer-events: none;
-    }
-    .hero-label {
-        font-size: 11px; font-weight: 600; letter-spacing: 2.5px;
-        text-transform: uppercase; opacity: 0.7;
-        margin-bottom: 12px; position: relative;
-    }
-    .hero-amount {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 58px; font-weight: 700; letter-spacing: -2.5px;
-        line-height: 1; margin-bottom: 22px; position: relative;
-    }
+.hero {
+    background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%);
+    border-radius: 28px;
+    padding: 36px 40px 42px 40px;
+    color: white;
+    margin: 4px 0 20px 0;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 20px 60px -15px rgba(79, 70, 229, 0.45);
+}
+.hero::before {
+    content: ''; position: absolute;
+    top: -100px; right: -50px;
+    width: 360px; height: 360px;
+    background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%);
+    border-radius: 50%; pointer-events: none;
+}
+.hero::after {
+    content: ''; position: absolute;
+    bottom: -150px; left: -50px;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(236, 72, 153, 0.20) 0%, transparent 70%);
+    border-radius: 50%; pointer-events: none;
+}
+.hero-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 2.5px;
+    text-transform: uppercase; opacity: 0.7;
+    margin-bottom: 12px; position: relative;
+}
+.hero-amount {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 58px; font-weight: 700; letter-spacing: -2.5px;
+    line-height: 1; margin-bottom: 22px; position: relative;
+}
 
-    /* ═══ HERO PILLS ═══ */
-    .hero-pills { display: flex; gap: 10px; flex-wrap: wrap; position: relative; }
-    .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.10) 100%);
-        padding: 8px 16px 8px 8px;
-        border-radius: 100px;
-        font-size: 13px;
-        font-weight: 600;
-        border: 1px solid rgba(255,255,255,0.18);
-        box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.30),
-            inset 0 -1px 0 rgba(0,0,0,0.08),
-            0 4px 12px rgba(0,0,0,0.18);
-    }
-    .pill-icon {
-        width: 28px;
-        height: 28px;
-        aspect-ratio: 1 / 1;
-        flex-shrink: 0;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        line-height: 1;
-        background: linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 100%);
-        box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.5),
-            inset 0 -2px 3px rgba(0,0,0,0.12),
-            0 3px 8px rgba(0,0,0,0.18);
-    }
-    .pill-text { display: flex; flex-direction: column; line-height: 1.15; }
-    .pill-value {
-        font-family: 'Space Grotesk';
-        font-weight: 700;
-        font-size: 14px;
-    }
-    .pill-label {
-        font-size: 10px;
-        opacity: 0.78;
-        font-weight: 600;
-        margin-top: 1px;
-    }
+.hero-pills { display: flex; gap: 10px; flex-wrap: wrap; position: relative; }
+.pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.10) 100%);
+    padding: 8px 16px 8px 8px; border-radius: 100px;
+    font-size: 13px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.18);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.30),
+                inset 0 -1px 0 rgba(0,0,0,0.08),
+                0 4px 12px rgba(0,0,0,0.18);
+}
+.pill-icon {
+    width: 28px; height: 28px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; line-height: 1;
+    background: linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5),
+                inset 0 -2px 3px rgba(0,0,0,0.12),
+                0 3px 8px rgba(0,0,0,0.18);
+}
+.pill-text { display: flex; flex-direction: column; line-height: 1.15; }
+.pill-value { font-family: 'Space Grotesk'; font-weight: 700; font-size: 14px; }
+.pill-label { font-size: 10px; opacity: 0.78; font-weight: 600; margin-top: 1px; }
 
-    /* ═══ KPI ═══ */
-    .kpi-grid {
-        display: grid; grid-template-columns: 1fr 1fr;
-        gap: 14px; margin-bottom: 8px;
-    }
-    .kpi {
-        background: white; border-radius: 20px; padding: 22px;
-        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
-        border: 1px solid rgba(15, 23, 42, 0.04);
-        transition: all 0.25s ease;
-    }
-    .kpi:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
-    }
-    .kpi-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.kpi-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px; margin-bottom: 8px;
+}
+.kpi {
+    background: white; border-radius: 20px; padding: 22px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+    transition: all 0.25s ease;
+}
+.kpi:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08); }
+.kpi-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.kpi-icon {
+    width: 38px; height: 38px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    font-weight: 700; color: white;
+}
+.icon-green {
+    background: linear-gradient(135deg, #00E5B0 0%, #00A578 100%);
+    box-shadow: 0 8px 18px -4px rgba(0,200,150,0.55),
+                inset 0 1px 0 rgba(255,255,255,0.40),
+                inset 0 -2px 4px rgba(0,0,0,0.15);
+}
+.icon-red {
+    background: linear-gradient(135deg, #FF7B7B 0%, #E13C3C 100%);
+    box-shadow: 0 8px 18px -4px rgba(255,87,87,0.55),
+                inset 0 1px 0 rgba(255,255,255,0.40),
+                inset 0 -2px 4px rgba(0,0,0,0.15);
+}
+.kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #64748B; }
+.kpi-amount {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -1px;
+    color: #0F172A; line-height: 1; margin-bottom: 10px;
+}
 
-    .kpi-icon {
-        width: 38px;
-        height: 38px;
-        aspect-ratio: 1 / 1;
-        flex-shrink: 0;
-        border-radius: 12px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        line-height: 1;
-        font-weight: 700;
-        color: white;
-    }
-    .icon-green {
-        background: linear-gradient(135deg, #00E5B0 0%, #00A578 100%);
-        box-shadow:
-            0 8px 18px -4px rgba(0,200,150,0.55),
-            inset 0 1px 0 rgba(255,255,255,0.40),
-            inset 0 -2px 4px rgba(0,0,0,0.15);
-    }
-    .icon-red {
-        background: linear-gradient(135deg, #FF7B7B 0%, #E13C3C 100%);
-        box-shadow:
-            0 8px 18px -4px rgba(255,87,87,0.55),
-            inset 0 1px 0 rgba(255,255,255,0.40),
-            inset 0 -2px 4px rgba(0,0,0,0.15);
-    }
+/* Дельта-плашка (сравнение с прошлым периодом) */
+.kpi-delta {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 700;
+    margin-top: 2px;
+}
+.delta-good { background: rgba(0,200,150,0.12); color: #00A578; }
+.delta-bad { background: rgba(255,87,87,0.12); color: #E13C3C; }
+.delta-neutral { background: #F1F5F9; color: #64748B; }
 
-    .kpi-label {
-        font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 1.5px; color: #64748B;
-    }
-    .kpi-amount {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 28px; font-weight: 700; letter-spacing: -1px;
-        color: #0F172A; line-height: 1; margin-bottom: 8px;
-    }
-    .kpi-sub { font-size: 12px; color: #94A3B8; font-weight: 500; }
+.kpi-sub { font-size: 11px; color: #94A3B8; font-weight: 500; margin-top: 6px; }
 
-    /* ═══ СЕКЦИИ ═══ */
-    .section {
-        display: flex; align-items: center; justify-content: space-between;
-        margin: 32px 0 14px 0;
-    }
-    .section-title {
-        font-size: 19px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px;
-    }
-    .section-sub { font-size: 12px; color: #94A3B8; font-weight: 500; }
+.section {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 32px 0 14px 0;
+}
+.section-title { font-size: 19px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px; }
+.section-sub { font-size: 12px; color: #94A3B8; font-weight: 500; }
 
-    .chart-card {
-        background: white; border-radius: 20px; padding: 24px;
-        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
-        border: 1px solid rgba(15, 23, 42, 0.04);
-        margin-bottom: 16px;
-    }
+.chart-card {
+    background: white; border-radius: 20px; padding: 24px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+    margin-bottom: 16px;
+}
 
-    /* ═══ СПИСОК КАТЕГОРИЙ ═══ */
-    .cat-list {
-        background: white; border-radius: 20px; padding: 8px;
-        box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
-        border: 1px solid rgba(15, 23, 42, 0.04);
-        overflow: visible;
-    }
-    .cat-link {
-        text-decoration: none !important; color: inherit !important;
-        display: block; border-radius: 14px;
-        transition: background 0.18s ease; cursor: pointer;
-    }
-    .cat-link:hover { background: #F8FAFC; }
-    .cat-link.active { background: #EEF2FF; }
-    .cat-row {
-        display: flex; align-items: center; gap: 14px;
-        padding: 12px 14px;
-    }
-    .cat-icon {
-        width: 44px;
-        height: 44px;
-        aspect-ratio: 1 / 1;
-        flex-shrink: 0;
-        border-radius: 13px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 21px;
-        line-height: 1;
-    }
-    .cat-info { flex: 1; min-width: 0; }
-    .cat-name {
-        font-weight: 600; color: #0F172A; font-size: 14px; margin-bottom: 6px;
-    }
-    .cat-bar-wrap {
-        height: 6px; background: #F1F5F9; border-radius: 100px; overflow: hidden;
-    }
-    .cat-bar { height: 100%; border-radius: 100px; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); }
-    .cat-right { text-align: right; flex-shrink: 0; }
-    .cat-amount {
-        font-family: 'Space Grotesk'; font-weight: 700;
-        font-size: 14px; color: #0F172A;
-    }
-    .cat-pct { font-size: 11px; color: #94A3B8; font-weight: 600; }
-    .cat-chev {
-        color: #CBD5E1; font-size: 18px; font-weight: 700;
-        margin-left: 4px; flex-shrink: 0;
-    }
-    .cat-link:hover .cat-chev { color: #4F46E5; }
+/* ═══ ФИНАНСОВАЯ ЛЕСТНИЦА ═══ */
+.ladder-hero {
+    background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%);
+    border-radius: 22px; padding: 22px 24px; color: white;
+    margin-bottom: 12px; position: relative; overflow: hidden;
+    box-shadow: 0 12px 32px -10px rgba(79, 70, 229, 0.35);
+}
+.ladder-hero-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase; opacity: 0.7; margin-bottom: 6px;
+}
+.ladder-hero-amount {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.ladder-hero-amount .now {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 30px; font-weight: 700; letter-spacing: -1px;
+}
+.ladder-hero-amount .target { font-size: 13px; opacity: 0.78; }
+.ladder-bar-wrap {
+    height: 14px; background: rgba(255,255,255,0.18); border-radius: 100px;
+    overflow: hidden; margin-bottom: 10px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+}
+.ladder-bar {
+    height: 100%; border-radius: 100px;
+    background: linear-gradient(90deg, #00E5B0, #00C896);
+    box-shadow: 0 0 12px rgba(0,229,176,0.5);
+    transition: width 0.6s ease;
+}
+.ladder-bar-info {
+    display: flex; justify-content: space-between;
+    font-size: 11px; font-weight: 600;
+}
+.ladder-bar-info .opacity { opacity: 0.8; }
 
-    /* ═══ ДЕТАЛЬНЫЙ ВИД ═══ */
-    .tx-card {
-        background: white; border-radius: 24px;
-        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
-        border: 1px solid rgba(15, 23, 42, 0.04);
-        overflow: hidden; margin-top: 8px;
-    }
-    .tx-header {
-        display: flex; align-items: center; gap: 16px;
-        padding: 22px 24px;
-        background: linear-gradient(135deg, #FAFBFC 0%, #F4F6F9 100%);
-        border-bottom: 1px solid #F1F5F9;
-    }
-    .tx-header-icon {
-        width: 56px;
-        height: 56px;
-        aspect-ratio: 1 / 1;
-        flex-shrink: 0;
-        border-radius: 17px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 28px;
-        line-height: 1;
-    }
-    .tx-header-info { flex: 1; min-width: 0; }
-    .tx-header-name {
-        font-weight: 700; font-size: 19px; color: #0F172A;
-        letter-spacing: -0.4px; line-height: 1.2;
-    }
-    .tx-header-stats {
-        font-size: 12px; color: #94A3B8; font-weight: 600; margin-top: 4px;
-    }
-    .tx-header-stats b {
-        font-family: 'Space Grotesk'; color: #475569; font-weight: 700;
-    }
-    .tx-back {
-        width: 40px; height: 40px;
-        aspect-ratio: 1 / 1;
-        flex-shrink: 0;
-        border-radius: 12px;
-        background: white; color: #475569 !important;
-        display: flex; align-items: center; justify-content: center;
-        text-decoration: none !important;
-        font-size: 18px; font-weight: 600;
-        box-shadow: 0 1px 4px rgba(15,23,42,0.06);
-        transition: all 0.15s ease;
-    }
-    .tx-back:hover {
-        background: #4F46E5; color: white !important; transform: translateX(-2px);
-    }
+.ladder-list {
+    background: white; border-radius: 20px;
+    padding: 8px 16px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+}
+.ladder-list-title {
+    font-size: 10px; font-weight: 700; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    padding: 10px 0 8px 0;
+}
+.ladder-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #F1F5F9;
+}
+.ladder-row:last-child { border-bottom: none; }
+.ladder-circle {
+    width: 32px; height: 32px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+}
+.ladder-circle-done {
+    background: #00C896; color: white;
+    box-shadow: 0 4px 10px -3px rgba(0,200,150,0.5);
+}
+.ladder-circle-current {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #4F46E5, #7C3AED);
+    color: white;
+    box-shadow: 0 6px 14px -2px rgba(79,70,229,0.55),
+                inset 0 1px 0 rgba(255,255,255,0.35);
+}
+.ladder-circle-todo {
+    background: #F1F5F9; color: #CBD5E1;
+    border: 2px solid #E2E8F0; font-size: 12px;
+}
+.ladder-info { flex: 1; min-width: 0; }
+.ladder-amount {
+    font-weight: 600; font-size: 14px; color: #0F172A;
+}
+.ladder-amount.done { color: #94A3B8; text-decoration: line-through; }
+.ladder-amount.current { font-weight: 700; }
+.ladder-amount.todo { color: #475569; }
+.ladder-status { font-size: 10px; font-weight: 700; margin-top: 2px; }
+.ladder-status.done { color: #00A578; }
+.ladder-status.current { color: #4F46E5; }
+.ladder-status.todo { color: #94A3B8; font-weight: 600; }
+.ladder-emoji { font-size: 19px; flex-shrink: 0; }
+.ladder-emoji.dim { opacity: 0.4; }
 
-    .tx-row {
-        display: flex; align-items: center; gap: 16px;
-        padding: 16px 24px; border-bottom: 1px solid #F4F6F9;
-        transition: background 0.15s ease;
-    }
-    .tx-row:hover { background: #FAFBFC; }
-    .tx-row:last-child { border-bottom: none; }
-    .tx-date {
-        width: 46px; text-align: center;
-        background: #F1F5F9; border-radius: 10px;
-        padding: 8px 0; flex-shrink: 0;
-        box-shadow: inset 0 -1px 0 rgba(0,0,0,0.03);
-    }
-    .tx-day {
-        font-family: 'Space Grotesk'; font-size: 18px; font-weight: 700;
-        color: #0F172A; line-height: 1;
-    }
-    .tx-month {
-        font-size: 9px; color: #94A3B8; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;
-    }
-    .tx-desc {
-        flex: 1; font-size: 14px; color: #334155; font-weight: 500;
-        line-height: 1.4; min-width: 0; word-break: break-word;
-    }
-    .tx-amount {
-        font-family: 'Space Grotesk'; font-weight: 700;
-        font-size: 16px; color: #E13C3C; flex-shrink: 0; letter-spacing: -0.3px;
-    }
+/* Текущая ступень — выделена фоном */
+.ladder-row-current {
+    background: #EEF2FF;
+    border-radius: 14px;
+    margin: 4px -8px;
+    padding: 12px 8px;
+    border-bottom: none;
+}
+.ladder-row-final {
+    background: linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(245,158,11,0.04) 100%);
+    border: 1.5px dashed #F59E0B;
+    border-radius: 14px;
+    margin: 4px -8px 8px -8px;
+    padding: 12px 8px;
+    border-bottom: none;
+}
+.ladder-circle-final {
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    color: white; font-size: 17px;
+    box-shadow: 0 4px 12px -2px rgba(245,158,11,0.6);
+}
+.ladder-amount.final { color: #92400E; font-weight: 700; }
+.ladder-status.final { color: #B45309; font-weight: 700; }
 
-    /* ═══ DATE INPUT ═══ */
-    div[data-testid="stDateInput"] > label { display: none !important; }
-    div[data-testid="stDateInput"] > div {
-        background: white; border-radius: 100px; padding: 4px 10px;
-        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-        border: 1px solid rgba(15, 23, 42, 0.06);
-    }
-    div[data-testid="stDateInput"] input {
-        font-family: 'Plus Jakarta Sans' !important;
-        font-weight: 600 !important; color: #0F172A !important;
-        font-size: 13px !important; border: none !important;
-    }
+/* ═══ УБИЙЦЫ БЮДЖЕТА ═══ */
+.killer-list {
+    background: white; border-radius: 20px; padding: 6px 16px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+}
+.killer-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid #F1F5F9;
+}
+.killer-row:last-child { border-bottom: none; }
+.killer-icon {
+    width: 38px; height: 38px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; line-height: 1;
+}
+.killer-info { flex: 1; min-width: 0; }
+.killer-name { font-weight: 600; color: #0F172A; font-size: 14px; margin-bottom: 3px; }
+.killer-trend { font-size: 10px; color: #94A3B8; font-weight: 500; }
+.killer-right { text-align: right; flex-shrink: 0; }
+.killer-pct {
+    font-size: 14px; font-weight: 700; font-family: 'Space Grotesk';
+    letter-spacing: -0.3px;
+}
+.killer-label {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 9px; font-weight: 700;
+}
 
-    /* ═══ МОБИЛКА ═══ */
-    @media (max-width: 640px) {
-        .block-container {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-        }
-        .logo { font-size: 24px; }
-        .hero {
-            padding: 26px 20px 32px 20px;
-            border-radius: 24px;
-        }
-        .hero-amount {
-            font-size: 38px;
-            letter-spacing: -1.5px;
-            margin-bottom: 20px;
-        }
-        .hero-pills { gap: 8px; }
-        .pill {
-            padding: 7px 14px 7px 7px;
-            font-size: 12px;
-            gap: 7px;
-        }
-        .pill-icon {
-            width: 26px;
-            height: 26px;
-            font-size: 13px;
-        }
-        .pill-value { font-size: 13px; }
-        .pill-label { font-size: 9px; letter-spacing: 0.2px; }
-        .kpi-grid { gap: 10px; }
-        .kpi { padding: 16px; }
-        .kpi-amount { font-size: 22px; }
-        .kpi-icon {
-            width: 34px;
-            height: 34px;
-            font-size: 16px;
-        }
-        .kpi-sub { font-size: 11px; }
-        .chart-card { padding: 16px; border-radius: 16px; }
-        .cat-list { padding: 6px; border-radius: 16px; }
-        .section-title { font-size: 16px; }
-        .cat-icon {
-            width: 40px;
-            height: 40px;
-            font-size: 19px;
-        }
-        .cat-row { gap: 12px; padding: 10px 10px; }
-        .cat-name { font-size: 13px; }
-        .cat-amount { font-size: 13px; }
-        .tx-header { padding: 18px 16px; gap: 12px; }
-        .tx-header-icon {
-            width: 50px;
-            height: 50px;
-            font-size: 24px;
-        }
-        .tx-header-name { font-size: 16px; }
-        .tx-row { padding: 14px 16px; gap: 12px; }
-        .tx-amount { font-size: 14px; }
-    }
+/* ═══ СПИСОК КАТЕГОРИЙ ═══ */
+.cat-list {
+    background: white; border-radius: 20px; padding: 8px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+    overflow: visible;
+}
+.cat-link {
+    text-decoration: none !important; color: inherit !important;
+    display: block; border-radius: 14px;
+    transition: background 0.18s ease; cursor: pointer;
+}
+.cat-link:hover { background: #F8FAFC; }
+.cat-link.active { background: #EEF2FF; }
+.cat-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }
+.cat-icon {
+    width: 44px; height: 44px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 21px; line-height: 1;
+}
+.cat-info { flex: 1; min-width: 0; }
+.cat-name { font-weight: 600; color: #0F172A; font-size: 14px; margin-bottom: 6px; }
+.cat-bar-wrap { height: 6px; background: #F1F5F9; border-radius: 100px; overflow: hidden; }
+.cat-bar { height: 100%; border-radius: 100px; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); }
+.cat-right { text-align: right; flex-shrink: 0; }
+.cat-amount { font-family: 'Space Grotesk'; font-weight: 700; font-size: 14px; color: #0F172A; }
+.cat-pct { font-size: 11px; color: #94A3B8; font-weight: 600; }
+.cat-chev { color: #CBD5E1; font-size: 18px; font-weight: 700; margin-left: 4px; flex-shrink: 0; }
+.cat-link:hover .cat-chev { color: #4F46E5; }
+
+/* ═══ ДЕТАЛЬНЫЙ ВИД ═══ */
+.tx-card {
+    background: white; border-radius: 24px;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.04);
+    overflow: hidden; margin-top: 8px;
+}
+.tx-header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 22px 24px;
+    background: linear-gradient(135deg, #FAFBFC 0%, #F4F6F9 100%);
+    border-bottom: 1px solid #F1F5F9;
+}
+.tx-header-icon {
+    width: 56px; height: 56px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 17px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; line-height: 1;
+}
+.tx-header-info { flex: 1; min-width: 0; }
+.tx-header-name {
+    font-weight: 700; font-size: 19px; color: #0F172A;
+    letter-spacing: -0.4px; line-height: 1.2;
+}
+.tx-header-stats { font-size: 12px; color: #94A3B8; font-weight: 600; margin-top: 4px; }
+.tx-header-stats b { font-family: 'Space Grotesk'; color: #475569; font-weight: 700; }
+.tx-back {
+    width: 40px; height: 40px;
+    aspect-ratio: 1 / 1; flex-shrink: 0;
+    border-radius: 12px;
+    background: white; color: #475569 !important;
+    display: flex; align-items: center; justify-content: center;
+    text-decoration: none !important;
+    font-size: 18px; font-weight: 600;
+    box-shadow: 0 1px 4px rgba(15,23,42,0.06);
+    transition: all 0.15s ease;
+}
+.tx-back:hover { background: #4F46E5; color: white !important; transform: translateX(-2px); }
+.tx-row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 24px; border-bottom: 1px solid #F4F6F9;
+    transition: background 0.15s ease;
+}
+.tx-row:hover { background: #FAFBFC; }
+.tx-row:last-child { border-bottom: none; }
+.tx-date {
+    width: 46px; text-align: center;
+    background: #F1F5F9; border-radius: 10px;
+    padding: 8px 0; flex-shrink: 0;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.03);
+}
+.tx-day { font-family: 'Space Grotesk'; font-size: 18px; font-weight: 700; color: #0F172A; line-height: 1; }
+.tx-month {
+    font-size: 9px; color: #94A3B8; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;
+}
+.tx-desc {
+    flex: 1; font-size: 14px; color: #334155; font-weight: 500;
+    line-height: 1.4; min-width: 0; word-break: break-word;
+}
+.tx-amount {
+    font-family: 'Space Grotesk'; font-weight: 700;
+    font-size: 16px; color: #E13C3C; flex-shrink: 0; letter-spacing: -0.3px;
+}
+
+/* ═══ PDF КНОПКА ═══ */
+.stDownloadButton button {
+    width: 100% !important;
+    background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 100%) !important;
+    color: white !important;
+    border: none !important;
+    padding: 16px !important;
+    border-radius: 18px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    font-family: 'Plus Jakarta Sans' !important;
+    box-shadow: 0 8px 20px -4px rgba(79, 70, 229, 0.4) !important;
+    transition: all 0.2s ease !important;
+}
+.stDownloadButton button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 12px 28px -4px rgba(79, 70, 229, 0.55) !important;
+}
+
+div[data-testid="stDateInput"] > label { display: none !important; }
+div[data-testid="stDateInput"] > div {
+    background: white; border-radius: 100px; padding: 4px 10px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+}
+div[data-testid="stDateInput"] input {
+    font-family: 'Plus Jakarta Sans' !important;
+    font-weight: 600 !important; color: #0F172A !important;
+    font-size: 13px !important; border: none !important;
+}
+
+@media (max-width: 640px) {
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .logo { font-size: 24px; }
+    .hero { padding: 26px 20px 32px 20px; border-radius: 24px; }
+    .hero-amount { font-size: 38px; letter-spacing: -1.5px; margin-bottom: 20px; }
+    .hero-pills { gap: 8px; }
+    .pill { padding: 7px 14px 7px 7px; font-size: 12px; gap: 7px; }
+    .pill-icon { width: 26px; height: 26px; font-size: 13px; }
+    .pill-value { font-size: 13px; }
+    .pill-label { font-size: 9px; letter-spacing: 0.2px; }
+    .kpi-grid { gap: 10px; }
+    .kpi { padding: 16px; }
+    .kpi-amount { font-size: 22px; }
+    .kpi-icon { width: 34px; height: 34px; font-size: 16px; }
+    .kpi-delta { font-size: 10px; padding: 3px 8px; }
+    .kpi-sub { font-size: 10px; }
+    .chart-card { padding: 16px; border-radius: 16px; }
+    .cat-list, .ladder-list, .killer-list { padding: 6px 12px; border-radius: 16px; }
+    .section-title { font-size: 16px; }
+    .cat-icon { width: 40px; height: 40px; font-size: 19px; }
+    .cat-row { gap: 12px; padding: 10px 10px; }
+    .cat-name { font-size: 13px; }
+    .cat-amount { font-size: 13px; }
+    .tx-header { padding: 18px 16px; gap: 12px; }
+    .tx-header-icon { width: 50px; height: 50px; font-size: 24px; }
+    .tx-header-name { font-size: 16px; }
+    .tx-row { padding: 14px 16px; gap: 12px; }
+    .tx-amount { font-size: 14px; }
+    .ladder-hero { padding: 18px 18px; border-radius: 20px; }
+    .ladder-hero-amount .now { font-size: 24px; }
+    .killer-icon { width: 34px; height: 34px; font-size: 17px; }
+    .killer-name { font-size: 13px; }
+    .killer-pct { font-size: 13px; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -437,6 +530,9 @@ CAT_COLORS = ['#4F46E5', '#00C896', '#F59E0B', '#EC4899', '#06B6D4',
 
 MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
              'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+
+MONTHS_RU_FULL = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 
 
 def cat_icon(cat):
@@ -491,22 +587,30 @@ def bar_gradient(color):
     )
 
 
+def fmt(n):
+    return f"{n:,.0f}".replace(",", " ")
+
+
+def fmt_compact(n):
+    """123456 → '123к', 1234567 → '1.2М'"""
+    n = abs(n)
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}М".replace('.0М', 'М')
+    if n >= 1_000:
+        return f"{n/1_000:.0f}к"
+    return f"{n:.0f}"
+
+
 # ═══════════════════════════════════════════════════════════
-# ДАННЫЕ
+# GOOGLE CREDS
 # ═══════════════════════════════════════════════════════════
 def get_credentials(scopes):
-    """
-    Получает Google credentials:
-    - на Streamlit Cloud — из st.secrets["gcp_service_account"]
-    - локально — из файла credentials.json
-    """
     try:
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             return Credentials.from_service_account_info(creds_dict, scopes=scopes)
     except Exception:
         pass
-    # Локальный режим
     return Credentials.from_service_account_file('credentials.json', scopes=scopes)
 
 
@@ -519,7 +623,6 @@ def load_data():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).sheet1
     df = pd.DataFrame(sheet.get_all_records())
-
     if not df.empty:
         df['Сумма'] = pd.to_numeric(df['Сумма'], errors='coerce').fillna(0)
         df['Дата'] = pd.to_datetime(df['Дата'], format='%d.%m.%Y', errors='coerce').fillna(
@@ -528,8 +631,279 @@ def load_data():
     return df
 
 
-def fmt(n):
-    return f"{n:,.0f}".replace(",", " ")
+# ═══════════════════════════════════════════════════════════
+# АНАЛИТИКА
+# ═══════════════════════════════════════════════════════════
+def get_last_full_month_income(df):
+    """Возвращает (доход_за_последний_полный_месяц, дата_начала, дата_конца)."""
+    if df.empty:
+        return 0, None, None
+    last_date = df['Дата'].max().date()
+    # Полный ли это месяц?
+    days_in_month = calendar.monthrange(last_date.year, last_date.month)[1]
+    if last_date.day >= days_in_month:
+        month_start = last_date.replace(day=1)
+        month_end = last_date
+    else:
+        # Прошлый полный месяц
+        last_day_prev = last_date.replace(day=1) - timedelta(days=1)
+        month_start = last_day_prev.replace(day=1)
+        month_end = last_day_prev
+
+    mask = (df['Дата'].dt.date >= month_start) & (df['Дата'].dt.date <= month_end)
+    monthly_df = df[mask]
+    income = monthly_df[monthly_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
+    return income, month_start, month_end
+
+
+def find_stage(income, stages):
+    """Возвращает (current_idx, target_value, target_emoji, target_label)
+    current_idx — индекс ещё не пройденной (текущей) ступени.
+    Если все пройдены — возвращает последнюю."""
+    for i, (target, emoji, label) in enumerate(stages):
+        if income < target:
+            return i, target, emoji, label
+    return len(stages) - 1, stages[-1][0], stages[-1][1], stages[-1][2]
+
+
+def get_budget_killers(curr_df, prev_df, top_n=3):
+    """Возвращает топ N категорий с наибольшим РОСТОМ расходов."""
+    curr_exp = curr_df[curr_df['Доход/Расход'] == 'Расход']
+    prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход']
+
+    curr_cats = curr_exp.groupby('Категория')['Сумма'].sum()
+    prev_cats = prev_exp.groupby('Категория')['Сумма'].sum()
+
+    killers = []
+    for cat, curr_val in curr_cats.items():
+        prev_val = prev_cats.get(cat, 0)
+        if prev_val <= 0:
+            # Новая категория — пропустим (не с чем сравнивать)
+            continue
+        pct = (curr_val - prev_val) / prev_val * 100
+        if pct > 10:  # Только заметный рост
+            killers.append({
+                'cat': cat, 'prev': prev_val, 'curr': curr_val, 'pct': pct
+            })
+    killers.sort(key=lambda x: x['pct'], reverse=True)
+    return killers[:top_n]
+
+
+def pct_change(curr, prev):
+    if prev == 0:
+        return None
+    return (curr - prev) / prev * 100
+
+
+# ═══════════════════════════════════════════════════════════
+# PDF — генерация отчёта
+# ═══════════════════════════════════════════════════════════
+def get_pdf_font():
+    """Регистрирует шрифт с поддержкой кириллицы. Возвращает имя шрифта."""
+    try:
+        pdfmetrics.getFont('DejaVuSans')
+        return 'DejaVuSans', 'DejaVuSans'  # обычный и жирный одинаковые
+    except Exception:
+        pass
+
+    candidates = [
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+        ('/usr/share/fonts/dejavu/DejaVuSans.ttf',
+         '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf'),
+    ]
+    for reg, bold in candidates:
+        if os.path.exists(reg):
+            try:
+                pdfmetrics.registerFont(TTFont('DejaVuSans', reg))
+                if os.path.exists(bold):
+                    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', bold))
+                    return 'DejaVuSans', 'DejaVuSans-Bold'
+                return 'DejaVuSans', 'DejaVuSans'
+            except Exception:
+                continue
+
+    # Fallback — скачать DejaVuSans
+    tmp_path = '/tmp/DejaVuSans.ttf'
+    if not os.path.exists(tmp_path):
+        try:
+            urllib.request.urlretrieve(
+                'https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans.ttf',
+                tmp_path
+            )
+        except Exception:
+            return 'Helvetica', 'Helvetica-Bold'
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVuSans', tmp_path))
+        return 'DejaVuSans', 'DejaVuSans'
+    except Exception:
+        return 'Helvetica', 'Helvetica-Bold'
+
+
+def generate_pdf_report(period_start, period_end, inc, exp, balance,
+                       inc_change, exp_change,
+                       monthly_income, stage_idx, stage_target, stage_label,
+                       killers, cats_breakdown):
+    """Генерирует PDF-отчёт. Возвращает bytes."""
+    font_name, font_bold = get_pdf_font()
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                           rightMargin=15*mm, leftMargin=15*mm,
+                           topMargin=15*mm, bottomMargin=15*mm)
+
+    PRIMARY = rl_colors.HexColor('#4F46E5')
+    DARK = rl_colors.HexColor('#0F172A')
+    MUTED = rl_colors.HexColor('#64748B')
+    LIGHT = rl_colors.HexColor('#F1F5F9')
+    GREEN = rl_colors.HexColor('#00A578')
+    RED = rl_colors.HexColor('#E13C3C')
+
+    s_title = ParagraphStyle('title', fontName=font_bold, fontSize=22,
+                             textColor=DARK, spaceAfter=4, leading=26)
+    s_subtitle = ParagraphStyle('subtitle', fontName=font_name, fontSize=11,
+                                textColor=MUTED, spaceAfter=18, leading=14)
+    s_section = ParagraphStyle('section', fontName=font_bold, fontSize=14,
+                               textColor=DARK, spaceAfter=8, spaceBefore=14,
+                               leading=18)
+    s_normal = ParagraphStyle('normal', fontName=font_name, fontSize=10,
+                              textColor=DARK, leading=14)
+    s_label = ParagraphStyle('label', fontName=font_name, fontSize=9,
+                             textColor=MUTED, leading=12)
+
+    elements = []
+
+    # Заголовок
+    elements.append(Paragraph("💎 My Finance · Финансовый отчёт", s_title))
+
+    if period_start and period_end:
+        period_str = (f"Период: {period_start.day} {MONTHS_RU_FULL[period_start.month-1]} "
+                      f"— {period_end.day} {MONTHS_RU_FULL[period_end.month-1]} {period_end.year}")
+    else:
+        period_str = "Период: все данные"
+    elements.append(Paragraph(period_str, s_subtitle))
+
+    # ── Главные показатели ──
+    elements.append(Paragraph("Главные показатели", s_section))
+    main_data = [
+        ['Показатель', 'Значение', 'vs прошлый период'],
+        ['Баланс', f"{fmt(balance)} ₽", '—'],
+        ['Доходы', f"{fmt(inc)} ₽",
+         f"{'+' if (inc_change or 0) >= 0 else ''}{inc_change:.1f}%" if inc_change is not None else '—'],
+        ['Расходы', f"{fmt(exp)} ₽",
+         f"{'+' if (exp_change or 0) >= 0 else ''}{exp_change:.1f}%" if exp_change is not None else '—'],
+    ]
+    t = Table(main_data, colWidths=[55*mm, 60*mm, 50*mm])
+    t.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), font_bold),
+        ('FONTNAME', (0, 1), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
+        ('TEXTCOLOR', (0, 0), (-1, 0), DARK),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.4, rl_colors.HexColor('#E2E8F0')),
+    ]))
+    elements.append(t)
+
+    # ── Финансовая лестница ──
+    elements.append(Paragraph("Финансовая лестница", s_section))
+    elements.append(Paragraph(
+        f"Текущий месячный доход: <b>{fmt(monthly_income)} ₽</b> · "
+        f"Этап {stage_idx+1} из {len(INCOME_STAGES)}: <b>{fmt(stage_target)} ₽/мес</b> "
+        f"({stage_label})",
+        s_normal
+    ))
+    elements.append(Spacer(1, 8))
+
+    stages_data = [['#', 'Цель в месяц', 'Статус']]
+    for i, (target, emoji, label) in enumerate(INCOME_STAGES):
+        if monthly_income >= target:
+            status = '✓ пройдено'
+        elif i == stage_idx:
+            pct = (monthly_income / target * 100) if target else 0
+            status = f'→ текущий ({pct:.0f}%)'
+        else:
+            status = '— впереди'
+        stages_data.append([str(i+1), f"{fmt(target)} ₽ — {label}", status])
+
+    t2 = Table(stages_data, colWidths=[12*mm, 100*mm, 53*mm])
+    t2.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), font_bold),
+        ('FONTNAME', (0, 1), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
+    ]))
+    elements.append(t2)
+
+    # ── Убийцы бюджета ──
+    if killers:
+        elements.append(Paragraph("Убийцы бюджета · топ-3 категорий с ростом", s_section))
+        k_data = [['Категория', 'Было', 'Стало', 'Рост']]
+        for k in killers:
+            k_data.append([
+                str(k['cat']),
+                f"{fmt(k['prev'])} ₽",
+                f"{fmt(k['curr'])} ₽",
+                f"+{k['pct']:.0f}%"
+            ])
+        t3 = Table(k_data, colWidths=[70*mm, 35*mm, 35*mm, 25*mm])
+        t3.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('TEXTCOLOR', (3, 1), (3, -1), RED),
+            ('FONTNAME', (3, 1), (3, -1), font_bold),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
+        ]))
+        elements.append(t3)
+
+    # ── Структура расходов ──
+    if cats_breakdown:
+        elements.append(Paragraph("Структура расходов", s_section))
+        c_data = [['#', 'Категория', 'Сумма', 'Доля']]
+        total_cat = sum(v for _, v in cats_breakdown)
+        for i, (cat, val) in enumerate(cats_breakdown, 1):
+            share = (val / total_cat * 100) if total_cat else 0
+            c_data.append([str(i), str(cat), f"{fmt(val)} ₽", f"{share:.1f}%"])
+        t4 = Table(c_data, colWidths=[12*mm, 100*mm, 35*mm, 18*mm])
+        t4.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), font_bold),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), LIGHT),
+            ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('LINEBELOW', (0, 0), (-1, -2), 0.3, rl_colors.HexColor('#E2E8F0')),
+        ]))
+        elements.append(t4)
+
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Создано в My Finance Dashboard", s_label))
+
+    doc.build(elements)
+    return buf.getvalue()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -546,100 +920,251 @@ try:
         except Exception:
             selected_cat = ""
 
-        # Шапка
         col_logo, col_date = st.columns([1.5, 1])
         with col_logo:
-            st.markdown(
-                '<div class="logo"><span class="logo-emoji">💎</span>My Finance</div>',
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="logo"><span class="logo-emoji">💎</span>My Finance</div>',
+                        unsafe_allow_html=True)
         with col_date:
             min_d, max_d = df['Дата'].min().date(), df['Дата'].max().date()
-            period = st.date_input(
-                "Период", value=(min_d, max_d),
-                min_value=min_d, max_value=max_d,
-                label_visibility="collapsed"
-            )
+            period = st.date_input("Период", value=(min_d, max_d),
+                                   min_value=min_d, max_value=max_d,
+                                   label_visibility="collapsed")
 
         if isinstance(period, tuple) and len(period) == 2:
-            f_df = df[(df['Дата'].dt.date >= period[0]) &
-                      (df['Дата'].dt.date <= period[1])]
-            days_count = (period[1] - period[0]).days + 1
+            p_start, p_end = period[0], period[1]
         else:
-            f_df = df
-            days_count = (max_d - min_d).days + 1
+            p_start, p_end = min_d, max_d
+
+        days_count = (p_end - p_start).days + 1
+        f_df = df[(df['Дата'].dt.date >= p_start) & (df['Дата'].dt.date <= p_end)]
+
+        # Предыдущий период такой же длины
+        prev_end = p_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=days_count - 1)
+        prev_df = df[(df['Дата'].dt.date >= prev_start) & (df['Дата'].dt.date <= prev_end)]
 
         inc = f_df[f_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
         exp = f_df[f_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
         balance = inc - exp
         savings_rate = (balance / inc * 100) if inc > 0 else 0
-
         earn_per_day = inc / days_count if days_count > 0 else 0
         exp_per_day = exp / days_count if days_count > 0 else 0
         monthly_pace = (balance / days_count * 30) if days_count > 0 else 0
         sign = "+" if balance >= 0 else "−"
         pace_sign = "+" if monthly_pace >= 0 else "−"
 
-        # HERO
-        st.markdown(f"""
-            <div class="hero">
-                <div class="hero-label">Общий баланс</div>
-                <div class="hero-amount">{sign}{fmt(abs(balance))} ₽</div>
-                <div class="hero-pills">
-                    <div class="pill">
-                        <div class="pill-icon">⚡</div>
-                        <div class="pill-text">
-                            <div class="pill-value">{fmt(earn_per_day)} ₽</div>
-                            <div class="pill-label">в день зарабатываю</div>
-                        </div>
-                    </div>
-                    <div class="pill">
-                        <div class="pill-icon">🎯</div>
-                        <div class="pill-text">
-                            <div class="pill-value">{savings_rate:.0f}%</div>
-                            <div class="pill-label">отложила</div>
-                        </div>
-                    </div>
-                    <div class="pill">
-                        <div class="pill-icon">🚀</div>
-                        <div class="pill-text">
-                            <div class="pill-value">{pace_sign}{fmt(abs(monthly_pace))} ₽</div>
-                            <div class="pill-label">темп за месяц</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # Изменения vs прошлый период
+        prev_inc = prev_df[prev_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
+        prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
+        inc_change = pct_change(inc, prev_inc)
+        exp_change = pct_change(exp, prev_exp)
 
-        # KPI
-        st.markdown(f"""
-            <div class="kpi-grid">
-                <div class="kpi">
-                    <div class="kpi-head">
-                        <div class="kpi-icon icon-green">↑</div>
-                        <div class="kpi-label">Доходы</div>
-                    </div>
-                    <div class="kpi-amount">{fmt(inc)} ₽</div>
-                    <div class="kpi-sub">≈ {fmt(earn_per_day)} ₽ в день</div>
-                </div>
-                <div class="kpi">
-                    <div class="kpi-head">
-                        <div class="kpi-icon icon-red">↓</div>
-                        <div class="kpi-label">Расходы</div>
-                    </div>
-                    <div class="kpi-amount">{fmt(exp)} ₽</div>
-                    <div class="kpi-sub">≈ {fmt(exp_per_day)} ₽ в день</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # ── HERO ──
+        hero_html = (
+            '<div class="hero">'
+            '<div class="hero-label">Общий баланс</div>'
+            f'<div class="hero-amount">{sign}{fmt(abs(balance))} ₽</div>'
+            '<div class="hero-pills">'
+            '<div class="pill"><div class="pill-icon">⚡</div><div class="pill-text">'
+            f'<div class="pill-value">{fmt(earn_per_day)} ₽</div>'
+            '<div class="pill-label">в день зарабатываю</div></div></div>'
+            '<div class="pill"><div class="pill-icon">🎯</div><div class="pill-text">'
+            f'<div class="pill-value">{savings_rate:.0f}%</div>'
+            '<div class="pill-label">отложила</div></div></div>'
+            '<div class="pill"><div class="pill-icon">🚀</div><div class="pill-text">'
+            f'<div class="pill-value">{pace_sign}{fmt(abs(monthly_pace))} ₽</div>'
+            '<div class="pill-label">темп за месяц</div></div></div>'
+            '</div></div>'
+        )
+        st.markdown(hero_html, unsafe_allow_html=True)
 
+        # ── KPI с дельтами ──
+        def delta_html(change, good_when_positive=True):
+            if change is None:
+                return '<div class="kpi-delta delta-neutral">— нет данных за прошлый период</div>'
+            is_positive = change >= 0
+            is_good = (is_positive == good_when_positive)
+            cls = 'delta-good' if is_good else 'delta-bad'
+            arrow = '↑' if is_positive else '↓'
+            sign_str = '+' if is_positive else ''
+            return (f'<div class="kpi-delta {cls}">'
+                    f'<span>{arrow}</span> {sign_str}{change:.1f}% vs прошлый период'
+                    f'</div>')
+
+        kpi_html = (
+            '<div class="kpi-grid">'
+            '<div class="kpi"><div class="kpi-head">'
+            '<div class="kpi-icon icon-green">↑</div>'
+            '<div class="kpi-label">Доходы</div></div>'
+            f'<div class="kpi-amount">{fmt(inc)} ₽</div>'
+            f'{delta_html(inc_change, good_when_positive=True)}'
+            f'<div class="kpi-sub">≈ {fmt(earn_per_day)} ₽ в день</div>'
+            '</div>'
+            '<div class="kpi"><div class="kpi-head">'
+            '<div class="kpi-icon icon-red">↓</div>'
+            '<div class="kpi-label">Расходы</div></div>'
+            f'<div class="kpi-amount">{fmt(exp)} ₽</div>'
+            f'{delta_html(exp_change, good_when_positive=False)}'
+            f'<div class="kpi-sub">≈ {fmt(exp_per_day)} ₽ в день</div>'
+            '</div>'
+            '</div>'
+        )
+        st.markdown(kpi_html, unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # ФИНАНСОВАЯ ЛЕСТНИЦА
+        # ═══════════════════════════════════════════════════════════
+        monthly_income, m_start, m_end = get_last_full_month_income(df)
+        stage_idx, stage_target, stage_emoji, stage_label = find_stage(monthly_income, INCOME_STAGES)
+        stage_pct = min((monthly_income / stage_target * 100), 100) if stage_target else 0
+        remaining = max(0, stage_target - monthly_income)
+
+        if m_start:
+            month_str = f"{MONTHS_RU_FULL[m_start.month-1].capitalize()} {m_start.year}"
+        else:
+            month_str = "—"
+
+        st.markdown(
+            '<div class="section">'
+            '<div><div class="section-title">🚀 Финансовая лестница</div>'
+            f'<div class="section-sub">Поэтапный рост дохода · база: {month_str}</div></div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        # Фиолетовый блок с текущим положением
+        is_final = (monthly_income >= INCOME_STAGES[-1][0])
+        if is_final:
+            ladder_hero = (
+                '<div class="ladder-hero">'
+                f'<div class="ladder-hero-label">🏆 ФИНАЛ ДОСТИГНУТ · этап {len(INCOME_STAGES)} из {len(INCOME_STAGES)}</div>'
+                '<div class="ladder-hero-amount">'
+                f'<div class="now">{fmt(monthly_income)} ₽/мес</div>'
+                '</div>'
+                '<div class="ladder-bar-wrap"><div class="ladder-bar" style="width:100%;"></div></div>'
+                '<div class="ladder-bar-info"><span>🎉 Поздравляем! Все ступени взяты</span></div>'
+                '</div>'
+            )
+        else:
+            ladder_hero = (
+                '<div class="ladder-hero">'
+                f'<div class="ladder-hero-label">Текущий этап: {stage_idx+1} из {len(INCOME_STAGES)} · {stage_label}</div>'
+                '<div class="ladder-hero-amount">'
+                f'<div class="now">{fmt(monthly_income)} ₽</div>'
+                f'<div class="target">/ {fmt(stage_target)} ₽ в месяц</div>'
+                '</div>'
+                '<div class="ladder-bar-wrap">'
+                f'<div class="ladder-bar" style="width:{stage_pct:.1f}%;"></div>'
+                '</div>'
+                '<div class="ladder-bar-info">'
+                f'<span>🔥 {stage_pct:.0f}% к следующему уровню</span>'
+                f'<span class="opacity">осталось {fmt(remaining)} ₽</span>'
+                '</div></div>'
+            )
+        st.markdown(ladder_hero, unsafe_allow_html=True)
+
+        # Список ступеней
+        parts = ['<div class="ladder-list">',
+                 '<div class="ladder-list-title">Весь путь до 10 млн ₽</div>']
+
+        for i, (target, emoji, label) in enumerate(INCOME_STAGES):
+            is_done = monthly_income >= target
+            is_current = (i == stage_idx) and not is_done
+            is_final_stage = (i == len(INCOME_STAGES) - 1)
+
+            if is_done:
+                row_class = "ladder-row"
+                circle = '<div class="ladder-circle ladder-circle-done">✓</div>'
+                amount_class = "done"
+                status = '<div class="ladder-status done">пройдено</div>'
+                emoji_html = f'<div class="ladder-emoji">{emoji}</div>'
+            elif is_current:
+                row_class = "ladder-row ladder-row-current"
+                circle = '<div class="ladder-circle ladder-circle-current">🎯</div>'
+                amount_class = "current"
+                status = f'<div class="ladder-status current">⚡ ТЫ ЗДЕСЬ · {stage_pct:.0f}%</div>'
+                emoji_html = f'<div class="ladder-emoji">{emoji}</div>'
+            elif is_final_stage and not is_done:
+                row_class = "ladder-row ladder-row-final"
+                circle = '<div class="ladder-circle ladder-circle-final">⭐</div>'
+                amount_class = "final"
+                status = '<div class="ladder-status final">🏆 ФИНАЛЬНАЯ ЦЕЛЬ</div>'
+                emoji_html = ''
+            else:
+                row_class = "ladder-row"
+                circle = f'<div class="ladder-circle ladder-circle-todo">{i+1}</div>'
+                amount_class = "todo"
+                status = f'<div class="ladder-status todo">{label}</div>'
+                emoji_html = f'<div class="ladder-emoji dim">{emoji}</div>'
+
+            parts.append(
+                f'<div class="{row_class}">'
+                f'{circle}'
+                '<div class="ladder-info">'
+                f'<div class="ladder-amount {amount_class}">{fmt(target)} ₽/мес</div>'
+                f'{status}'
+                '</div>'
+                f'{emoji_html}'
+                '</div>'
+            )
+
+        parts.append('</div>')
+        st.markdown(''.join(parts), unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # УБИЙЦЫ БЮДЖЕТА
+        # ═══════════════════════════════════════════════════════════
+        killers = get_budget_killers(f_df, prev_df, top_n=3)
+
+        if killers:
+            st.markdown(
+                '<div class="section">'
+                '<div><div class="section-title">🚨 Убийцы бюджета</div>'
+                '<div class="section-sub">Где траты выросли больше всего vs прошлый период</div></div>'
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+            killer_parts = ['<div class="killer-list">']
+            for k in killers:
+                pct_val = k['pct']
+                if pct_val >= 100:
+                    color = '#EF4444'
+                    label_txt = '↑ резкий рост'
+                elif pct_val >= 50:
+                    color = '#F59E0B'
+                    label_txt = '↑ умеренно'
+                else:
+                    color = '#EC4899'
+                    label_txt = '↑ небольшой'
+
+                bg = color + '2E'  # с прозрачностью
+                killer_parts.append(
+                    '<div class="killer-row">'
+                    f'<div class="killer-icon" style="background:{bg}; color:{color};">{cat_icon(k["cat"])}</div>'
+                    '<div class="killer-info">'
+                    f'<div class="killer-name">{html_lib.escape(str(k["cat"]))}</div>'
+                    f'<div class="killer-trend">{fmt(k["prev"])} ₽ → {fmt(k["curr"])} ₽</div>'
+                    '</div>'
+                    '<div class="killer-right">'
+                    f'<div class="killer-pct" style="color:{color};">+{pct_val:.0f}%</div>'
+                    f'<div class="killer-label" style="color:{color};">{label_txt}</div>'
+                    '</div>'
+                    '</div>'
+                )
+            killer_parts.append('</div>')
+            st.markdown(''.join(killer_parts), unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
         # CASH FLOW
-        st.markdown("""
-            <div class="section">
-                <div class="section-title">📊 Cash Flow</div>
-                <div class="section-sub">Динамика по дням</div>
-            </div>
-        """, unsafe_allow_html=True)
+        # ═══════════════════════════════════════════════════════════
+        st.markdown(
+            '<div class="section">'
+            '<div class="section-title">📊 Cash Flow</div>'
+            '<div class="section-sub">Динамика по дням</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
         daily = f_df.groupby([f_df['Дата'].dt.date, 'Доход/Расход'])['Сумма'].sum().reset_index()
         d_inc = daily[daily['Доход/Расход'] == 'Доход']
@@ -678,23 +1203,27 @@ try:
                         bgcolor='rgba(0,0,0,0)')
         )
         st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-        st.plotly_chart(fig, use_container_width=True,
-                        config={'displayModeBar': False})
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # ═══════════════════════════════════════════════════════════
         # СТРУКТУРА РАСХОДОВ
+        # ═══════════════════════════════════════════════════════════
         exp_df = f_df[f_df['Доход/Расход'] == 'Расход']
+        cats_breakdown = []  # для PDF
 
         if not exp_df.empty:
             cats = exp_df.groupby('Категория')['Сумма'].sum().sort_values(ascending=False)
             total = cats.sum()
+            cats_breakdown = list(cats.items())
 
-            st.markdown("""
-                <div class="section">
-                    <div class="section-title">🎯 Структура расходов</div>
-                    <div class="section-sub">Нажми на категорию для деталей</div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="section">'
+                '<div class="section-title">🎯 Структура расходов</div>'
+                '<div class="section-sub">Нажми на категорию для деталей</div>'
+                '</div>',
+                unsafe_allow_html=True
+            )
 
             col_donut, col_list = st.columns([1, 1.2])
 
@@ -719,12 +1248,11 @@ try:
                     )]
                 )
                 st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-                st.plotly_chart(fig_d, use_container_width=True,
-                                config={'displayModeBar': False})
+                st.plotly_chart(fig_d, use_container_width=True, config={'displayModeBar': False})
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with col_list:
-                rows_html = '<div class="cat-list">'
+                lparts = ['<div class="cat-list">']
                 for i, (cat, val) in enumerate(cats.items()):
                     pct = (val / total * 100)
                     color = CAT_COLORS[i % len(CAT_COLORS)]
@@ -733,26 +1261,24 @@ try:
                     cat_safe = html_lib.escape(str(cat))
                     icon_style = icon_3d_style(color)
                     bar_style = bar_gradient(color)
-                    rows_html += f"""
-                    <a href="?cat={cat_url}" target="_self" class="cat-link{active}">
-                        <div class="cat-row">
-                            <div class="cat-icon" style="{icon_style}">{cat_icon(cat)}</div>
-                            <div class="cat-info">
-                                <div class="cat-name">{cat_safe}</div>
-                                <div class="cat-bar-wrap">
-                                    <div class="cat-bar" style="width:{pct:.1f}%; {bar_style}"></div>
-                                </div>
-                            </div>
-                            <div class="cat-right">
-                                <div class="cat-amount">{fmt(val)} ₽</div>
-                                <div class="cat-pct">{pct:.1f}%</div>
-                            </div>
-                            <div class="cat-chev">›</div>
-                        </div>
-                    </a>
-                    """
-                rows_html += '</div>'
-                st.markdown(rows_html, unsafe_allow_html=True)
+                    lparts.append(
+                        f'<a href="?cat={cat_url}" target="_self" class="cat-link{active}">'
+                        '<div class="cat-row">'
+                        f'<div class="cat-icon" style="{icon_style}">{cat_icon(cat)}</div>'
+                        '<div class="cat-info">'
+                        f'<div class="cat-name">{cat_safe}</div>'
+                        '<div class="cat-bar-wrap">'
+                        f'<div class="cat-bar" style="width:{pct:.1f}%; {bar_style}"></div>'
+                        '</div></div>'
+                        '<div class="cat-right">'
+                        f'<div class="cat-amount">{fmt(val)} ₽</div>'
+                        f'<div class="cat-pct">{pct:.1f}%</div>'
+                        '</div>'
+                        '<div class="cat-chev">›</div>'
+                        '</div></a>'
+                    )
+                lparts.append('</div>')
+                st.markdown(''.join(lparts), unsafe_allow_html=True)
 
             # ── ДЕТАЛЬНЫЙ ВИД ──
             if selected_cat and selected_cat in cats.index:
@@ -770,27 +1296,26 @@ try:
                               if c not in ['Сумма', 'Категория',
                                            'Доход/Расход', 'Дата']]
 
-                st.markdown(f"""
-                    <div class="section">
-                        <div class="section-title">📋 {html_lib.escape(str(selected_cat))}</div>
-                        <div class="section-sub">Все операции в категории</div>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="section">'
+                    f'<div class="section-title">📋 {html_lib.escape(str(selected_cat))}</div>'
+                    '<div class="section-sub">Все операции в категории</div>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
 
                 cat_safe = html_lib.escape(str(selected_cat))
-                detail_html = f"""
-                <div class="tx-card">
-                    <div class="tx-header">
-                        <div class="tx-header-icon" style="{header_icon_style}">{icon}</div>
-                        <div class="tx-header-info">
-                            <div class="tx-header-name">{cat_safe}</div>
-                            <div class="tx-header-stats">
-                                <b>{tx_count}</b> операций · <b>{fmt(cat_total)} ₽</b>
-                            </div>
-                        </div>
-                        <a href="?" target="_self" class="tx-back" title="Назад">←</a>
-                    </div>
-                """
+                dparts = [
+                    '<div class="tx-card">',
+                    '<div class="tx-header">',
+                    f'<div class="tx-header-icon" style="{header_icon_style}">{icon}</div>',
+                    '<div class="tx-header-info">',
+                    f'<div class="tx-header-name">{cat_safe}</div>',
+                    f'<div class="tx-header-stats"><b>{tx_count}</b> операций · <b>{fmt(cat_total)} ₽</b></div>',
+                    '</div>',
+                    '<a href="?" target="_self" class="tx-back" title="Назад">←</a>',
+                    '</div>'
+                ]
 
                 for _, tx in tx_df.iterrows():
                     day = tx['Дата'].day
@@ -805,19 +1330,45 @@ try:
                     if not desc:
                         desc = str(selected_cat)
 
-                    detail_html += f"""
-                    <div class="tx-row">
-                        <div class="tx-date">
-                            <div class="tx-day">{day}</div>
-                            <div class="tx-month">{month}</div>
-                        </div>
-                        <div class="tx-desc">{html_lib.escape(desc)}</div>
-                        <div class="tx-amount">−{fmt(amount)} ₽</div>
-                    </div>
-                    """
+                    dparts.append(
+                        '<div class="tx-row">'
+                        '<div class="tx-date">'
+                        f'<div class="tx-day">{day}</div>'
+                        f'<div class="tx-month">{month}</div>'
+                        '</div>'
+                        f'<div class="tx-desc">{html_lib.escape(desc)}</div>'
+                        f'<div class="tx-amount">−{fmt(amount)} ₽</div>'
+                        '</div>'
+                    )
 
-                detail_html += "</div>"
-                st.markdown(detail_html, unsafe_allow_html=True)
+                dparts.append('</div>')
+                st.markdown(''.join(dparts), unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════
+        # КНОПКА СКАЧАТЬ PDF
+        # ═══════════════════════════════════════════════════════════
+        st.markdown('<div style="margin-top: 32px;"></div>', unsafe_allow_html=True)
+
+        try:
+            pdf_bytes = generate_pdf_report(
+                period_start=p_start, period_end=p_end,
+                inc=inc, exp=exp, balance=balance,
+                inc_change=inc_change, exp_change=exp_change,
+                monthly_income=monthly_income,
+                stage_idx=stage_idx, stage_target=stage_target, stage_label=stage_label,
+                killers=killers,
+                cats_breakdown=cats_breakdown
+            )
+            filename = f"my_finance_{p_start.strftime('%Y-%m-%d')}_{p_end.strftime('%Y-%m-%d')}.pdf"
+            st.download_button(
+                label="📥  Скачать PDF-отчёт",
+                data=pdf_bytes,
+                file_name=filename,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.warning(f"PDF недоступен: {e}")
 
 except Exception as e:
     st.error(f"Упс! Что-то пошло не так: {e}")
