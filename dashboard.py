@@ -6,12 +6,12 @@ import plotly.graph_objects as go
 import urllib.parse
 import html as html_lib
 import calendar
-from datetime import timedelta
+from datetime import date
 
 st.set_page_config(page_title="My Finance", layout="wide",
                    page_icon="💎", initial_sidebar_state="collapsed")
 
-# Финансовая лестница (этапы дохода в руб/мес) — можно менять:
+# Финансовая лестница
 INCOME_STAGES = [
     (100_000,    '🌱', 'Старт'),
     (250_000,    '💪', 'Уверенный рост'),
@@ -27,7 +27,7 @@ MONTHS_RU_FULL = ['Январь', 'Февраль', 'Март', 'Апрель', 
                   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
 
 # ═══════════════════════════════════════════════════════════
-# CSS (полный, как раньше)
+# CSS
 # ═══════════════════════════════════════════════════════════
 st.markdown("""
 <style>
@@ -39,10 +39,21 @@ st.markdown("""
 .block-container { padding-top: 1.5rem !important; padding-bottom: 4rem !important; max-width: 1200px !important; }
 .logo { font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; background: linear-gradient(135deg, #4F46E5 0%, #00C896 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -1.2px; display: flex; align-items: center; gap: 8px; }
 .logo-emoji { -webkit-text-fill-color: initial; background: none; }
+
+/* Селектор месяца */
+.month-bar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.month-selector { background: white; border-radius: 100px; padding: 5px; display: inline-flex; align-items: center; box-shadow: 0 4px 16px rgba(15,23,42,0.06); border: 1px solid rgba(15,23,42,0.06); gap: 2px; }
+.month-btn { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #475569 !important; font-size: 17px; font-weight: 700; text-decoration: none !important; transition: all 0.18s ease; }
+.month-btn:hover { background: #F1F5F9; color: #0F172A !important; }
+.month-btn.disabled { color: #CBD5E1 !important; pointer-events: none; }
+.month-current { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; color: #0F172A; padding: 0 14px; min-width: 140px; text-align: center; letter-spacing: -0.3px; }
+.month-today-badge { display: inline-block; background: #00C896; color: white; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 5px; margin-left: 5px; vertical-align: middle; letter-spacing: 0.4px; }
+
 .hero { background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%); border-radius: 28px; padding: 36px 40px 42px 40px; color: white; margin: 4px 0 20px 0; position: relative; overflow: hidden; box-shadow: 0 20px 60px -15px rgba(79, 70, 229, 0.45); }
 .hero::before { content: ''; position: absolute; top: -100px; right: -50px; width: 360px; height: 360px; background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%); border-radius: 50%; pointer-events: none; }
 .hero::after { content: ''; position: absolute; bottom: -150px; left: -50px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(236, 72, 153, 0.20) 0%, transparent 70%); border-radius: 50%; pointer-events: none; }
-.hero-label { font-size: 11px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; opacity: 0.7; margin-bottom: 12px; position: relative; }
+.hero-label { font-size: 11px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; opacity: 0.7; margin-bottom: 6px; position: relative; }
+.hero-month { font-size: 13px; opacity: 0.85; margin-bottom: 14px; font-weight: 600; position: relative; }
 .hero-amount { font-family: 'Space Grotesk', sans-serif; font-size: 58px; font-weight: 700; letter-spacing: -2.5px; line-height: 1; margin-bottom: 22px; position: relative; }
 .hero-pills { display: flex; gap: 10px; flex-wrap: wrap; position: relative; }
 .pill { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.10)); padding: 8px 16px 8px 8px; border-radius: 100px; font-size: 13px; font-weight: 600; border: 1px solid rgba(255,255,255,0.18); box-shadow: inset 0 1px 0 rgba(255,255,255,0.30), inset 0 -1px 0 rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.18); }
@@ -50,6 +61,7 @@ st.markdown("""
 .pill-text { display: flex; flex-direction: column; line-height: 1.15; }
 .pill-value { font-family: 'Space Grotesk'; font-weight: 700; font-size: 14px; }
 .pill-label { font-size: 10px; opacity: 0.78; font-weight: 600; margin-top: 1px; }
+
 .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 8px; }
 .kpi { background: white; border-radius: 20px; padding: 22px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); transition: all 0.25s ease; }
 .kpi:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.08); }
@@ -64,18 +76,18 @@ st.markdown("""
 .delta-bad { background: rgba(255,87,87,0.12); color: #E13C3C; }
 .delta-neutral { background: #F1F5F9; color: #64748B; }
 .kpi-sub { font-size: 11px; color: #94A3B8; font-weight: 500; margin-top: 6px; }
+
 .section { display: flex; align-items: center; justify-content: space-between; margin: 32px 0 14px 0; }
 .section-title { font-size: 19px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px; }
 .section-sub { font-size: 12px; color: #94A3B8; font-weight: 500; }
 .chart-card { background: white; border-radius: 20px; padding: 24px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); margin-bottom: 16px; }
-.donut-card-exp { background: radial-gradient(ellipse 200px 150px at center 50%, rgba(239,68,68,0.08), transparent 70%), white; border-radius: 22px; padding: 18px; box-shadow: 0 4px 16px rgba(239,68,68,0.12), 0 1px 4px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,1); border: 1px solid rgba(239,68,68,0.10); transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); margin-bottom: 16px; }
-.donut-card-exp:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(239,68,68,0.18), 0 4px 8px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,1); }
-.donut-card-inc { background: radial-gradient(ellipse 200px 150px at center 50%, rgba(0,200,150,0.10), transparent 70%), white; border-radius: 22px; padding: 18px; box-shadow: 0 4px 16px rgba(0,200,150,0.14), 0 1px 4px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,1); border: 1px solid rgba(0,200,150,0.12); transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); margin-bottom: 16px; }
-.donut-card-inc:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(0,200,150,0.22), 0 4px 8px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,1); }
+.donut-card-exp { background: radial-gradient(ellipse 200px 150px at center 50%, rgba(239,68,68,0.08), transparent 70%), white; border-radius: 22px; padding: 18px; box-shadow: 0 4px 16px rgba(239,68,68,0.12), 0 1px 4px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,1); border: 1px solid rgba(239,68,68,0.10); margin-bottom: 16px; }
+.donut-card-inc { background: radial-gradient(ellipse 200px 150px at center 50%, rgba(0,200,150,0.10), transparent 70%), white; border-radius: 22px; padding: 18px; box-shadow: 0 4px 16px rgba(0,200,150,0.14), 0 1px 4px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,1); border: 1px solid rgba(0,200,150,0.12); margin-bottom: 16px; }
 .empty-card { background: white; border-radius: 20px; padding: 28px 22px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); text-align: center; }
 .empty-emoji { font-size: 32px; margin-bottom: 8px; line-height: 1; }
 .empty-title { font-weight: 700; color: #0F172A; font-size: 15px; margin-bottom: 4px; }
 .empty-text { color: #64748B; font-size: 13px; font-weight: 500; line-height: 1.5; }
+
 .ladder-hero { background: linear-gradient(135deg, #1E1B4B 0%, #4F46E5 50%, #7C3AED 100%); border-radius: 22px; padding: 22px 24px; color: white; margin-bottom: 12px; position: relative; overflow: hidden; box-shadow: 0 12px 32px -10px rgba(79,70,229,0.35); }
 .ladder-hero-label { font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; opacity: 0.7; margin-bottom: 6px; }
 .ladder-hero-amount { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -109,6 +121,7 @@ st.markdown("""
 .ladder-circle-final { background: linear-gradient(135deg, #FBBF24, #F59E0B); color: white; font-size: 17px; box-shadow: 0 4px 12px -2px rgba(245,158,11,0.6); }
 .ladder-amount.final { color: #92400E; font-weight: 700; }
 .ladder-status.final { color: #B45309; font-weight: 700; }
+
 .killer-list { background: white; border-radius: 20px; padding: 6px 16px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); }
 .killer-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F1F5F9; }
 .killer-row:last-child { border-bottom: none; }
@@ -119,7 +132,8 @@ st.markdown("""
 .killer-right { text-align: right; flex-shrink: 0; }
 .killer-pct { font-size: 14px; font-weight: 700; font-family: 'Space Grotesk'; letter-spacing: -0.3px; }
 .killer-label { display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700; }
-.cat-list { background: white; border-radius: 20px; padding: 8px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); overflow: visible; }
+
+.cat-list { background: white; border-radius: 20px; padding: 8px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); }
 .cat-link { text-decoration: none !important; color: inherit !important; display: block; border-radius: 14px; transition: all 0.18s ease; cursor: pointer; }
 .cat-link:hover { background: #F8FAFC; transform: translateX(2px); }
 .cat-link.active { background: #EEF2FF; }
@@ -128,7 +142,6 @@ st.markdown("""
 .cat-icon { width: 44px; height: 44px; aspect-ratio: 1/1; flex-shrink: 0; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 21px; line-height: 1; }
 .cat-info { flex: 1; min-width: 0; }
 .cat-name { font-weight: 600; color: #0F172A; font-size: 14px; margin-bottom: 6px; }
-.cat-sub { font-size: 11px; color: #94A3B8; font-weight: 500; margin-top: -3px; margin-bottom: 6px; }
 .cat-bar-wrap { height: 6px; background: #F1F5F9; border-radius: 100px; overflow: hidden; }
 .cat-bar { height: 100%; border-radius: 100px; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08); transition: width 0.5s ease; }
 .cat-right { text-align: right; flex-shrink: 0; }
@@ -137,6 +150,7 @@ st.markdown("""
 .cat-chev { color: #CBD5E1; font-size: 18px; font-weight: 700; margin-left: 4px; flex-shrink: 0; transition: color 0.18s ease; }
 .cat-link:hover .cat-chev { color: #4F46E5; }
 .cat-link.active-inc:hover .cat-chev { color: #00A578; }
+
 .tx-card { background: white; border-radius: 24px; box-shadow: 0 8px 28px rgba(15,23,42,0.06); border: 1px solid rgba(15,23,42,0.04); overflow: hidden; margin-top: 8px; }
 .tx-header { display: flex; align-items: center; gap: 16px; padding: 22px 24px; background: linear-gradient(135deg, #FAFBFC 0%, #F4F6F9 100%); border-bottom: 1px solid #F1F5F9; }
 .tx-header-icon { width: 56px; height: 56px; aspect-ratio: 1/1; flex-shrink: 0; border-radius: 17px; display: flex; align-items: center; justify-content: center; font-size: 28px; line-height: 1; }
@@ -158,34 +172,29 @@ st.markdown("""
 .tx-amount.inc { color: #00A578; }
 
 /* Переключатель режима */
-.mode-toggle {
-    display: inline-flex;
-    background: #F1F5F9;
-    border-radius: 12px;
-    padding: 3px;
-    gap: 2px;
-}
-.mode-toggle a {
-    padding: 6px 14px;
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #64748B !important;
-    text-decoration: none !important;
-    transition: all 0.15s ease;
-}
-.mode-toggle a.active {
-    background: white;
-    color: #0F172A !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-.mode-toggle a:hover:not(.active) {
-    background: rgba(255,255,255,0.5);
-}
+.mode-toggle { display: inline-flex; background: #F1F5F9; border-radius: 12px; padding: 3px; gap: 2px; }
+.mode-toggle a { padding: 6px 14px; border-radius: 9px; font-size: 12px; font-weight: 600; color: #64748B !important; text-decoration: none !important; transition: all 0.15s ease; }
+.mode-toggle a.active { background: white; color: #0F172A !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.mode-toggle a:hover:not(.active) { background: rgba(255,255,255,0.5); }
 
-div[data-testid="stDateInput"] > label { display: none !important; }
-div[data-testid="stDateInput"] > div { background: white; border-radius: 100px; padding: 4px 10px; box-shadow: 0 2px 10px rgba(15,23,42,0.05); border: 1px solid rgba(15,23,42,0.06); }
-div[data-testid="stDateInput"] input { font-family: 'Plus Jakarta Sans' !important; font-weight: 600 !important; color: #0F172A !important; font-size: 13px !important; border: none !important; }
+/* Карточки месяцев */
+.month-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 14px; }
+.mcard { background: white; border-radius: 20px; padding: 18px 20px; box-shadow: 0 2px 12px rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.04); text-decoration: none !important; color: inherit !important; display: block; transition: all 0.22s ease; }
+.mcard:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.08); }
+.mcard.current { background: linear-gradient(135deg, #EEF2FF 0%, white 100%); border: 1.5px solid #4F46E5; box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.2); }
+.mcard-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.mcard-month { font-size: 13px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px; }
+.mcard-year { font-size: 10px; color: #94A3B8; font-weight: 600; }
+.mcard.current .mcard-year { color: #4F46E5; font-weight: 700; }
+.mcard-balance { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.8px; margin-bottom: 10px; line-height: 1; }
+.mcard-balance.pos { color: #00A578; }
+.mcard-balance.neg { color: #E13C3C; }
+.mcard-bars { display: flex; gap: 4px; margin-bottom: 8px; align-items: flex-end; height: 22px; }
+.mcard-bar-inc { height: 100%; border-radius: 3px; background: linear-gradient(180deg, #00E5B0, #00A578); }
+.mcard-bar-exp { height: 100%; border-radius: 3px; background: linear-gradient(180deg, #FF7B7B, #E13C3C); }
+.mcard-stats { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; }
+.mcard-stats .inc { color: #00A578; }
+.mcard-stats .exp { color: #E13C3C; }
 
 @media (max-width: 640px) {
     .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -214,55 +223,46 @@ div[data-testid="stDateInput"] input { font-family: 'Plus Jakarta Sans' !importa
     .killer-icon { width: 34px; height: 34px; font-size: 17px; }
     .killer-name { font-size: 13px; } .killer-pct { font-size: 13px; }
     .mode-toggle a { padding: 5px 11px; font-size: 11px; }
+    .month-current { font-size: 13px; padding: 0 8px; min-width: 110px; }
+    .month-btn { width: 32px; height: 32px; font-size: 16px; }
+    .month-cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mcard { padding: 14px 16px; border-radius: 16px; }
+    .mcard-balance { font-size: 19px; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ═══════════════════════════════════════════════════════════
-# КОНСТАНТЫ
-# ═══════════════════════════════════════════════════════════
 CAT_COLORS = ['#4F46E5', '#EC4899', '#F59E0B', '#06B6D4', '#8B5CF6', '#EF4444',
               '#F97316', '#3B82F6', '#A855F7', '#14B8A6', '#FB7185', '#FCD34D',
               '#7C3AED', '#DB2777', '#D97706', '#0891B2', '#6D28D9', '#DC2626',
               '#EA580C', '#2563EB', '#9333EA', '#0D9488']
-
 INC_COLORS = ['#00C896', '#10B981', '#34D399', '#059669', '#22C55E', '#84CC16',
               '#16A34A', '#15803D', '#65A30D', '#0F766E', '#047857', '#14B8A6']
 
 
 def cat_icon(cat):
     c = str(cat).lower()
-    m = {
-        'еда': '🛒', 'продукт': '🛒', 'супермаркет': '🛒', 'магазин': '🛍️',
-        'кафе': '☕', 'ресторан': '🍽️', 'кофе': '☕', 'бар': '🍷',
-        'транспорт': '🚇', 'такси': '🚕', 'парков': '🅿️', 'бензин': '⛽',
-        'авто': '🚗', 'мойк': '🚿', 'то': '🔧', 'ремонт': '🔧',
-        'метро': '🚇', 'жил': '🏠', 'дом': '🏠', 'квартир': '🏠', 'аренд': '🏠',
-        'благоустр': '🛋️', 'коммунал': '💡', 'одежд': '👕', 'обув': '👟',
-        'красот': '💄', 'космет': '💄', 'спа': '✨', 'уход': '✨',
-        'здоров': '🏥', 'аптек': '💊', 'медиц': '🏥', 'обслед': '🩺', 'лечен': '💉',
-        'развлеч': '🎬', 'кино': '🎬', 'игр': '🎮',
-        'спорт': '🏋️', 'фитнес': '🏋️', 'йог': '🧘',
-        'зож': '🧘', 'бад': '💊', 'терапи': '🧠',
-        'путеш': '✈️', 'поездк': '✈️', 'отпуск': '✈️', 'отел': '🏨',
-        'софия': '👧', 'школ': '🏫', 'секц': '🎒',
-        'зарплат': '💼', 'оклад': '💼', 'доход': '💰',
-        'бонус': '🎁', 'фриланс': '💻', 'клиент': '🤝',
-        'консульт': '📝', 'юрид': '⚖️', 'юрисп': '⚖️',
-        'продаж': '💵', 'комисс': '💸', 'процент': '📊',
-        'подарок': '🎁', 'подарк': '🎁',
-        'связь': '📱', 'интернет': '📡', 'телефон': '📱', 'впн': '🔐', 'vpn': '🔐',
-        'образован': '📚', 'учеб': '📚', 'курс': '📚', 'книг': '📖', 'обучен': '📚',
-        'животн': '🐾', 'питом': '🐾',
-        'дет': '👶', 'хобби': '🎨',
-        'налог': '🧾', 'штраф': '🚨',
-        'долг': '💳', 'кредит': '💳',
-        'инвест': '📈', 'дивиденд': '📈', 'накоплен': '🏦', 'депозит': '🏦',
-        'подписк': '📰',
-        'тушин': '🏢', 'никол': '🔑', 'клиник': '🩺',
-        'возврат': '🔙', 'случайн': '🎲',
-    }
+    m = {'еда': '🛒', 'продукт': '🛒', 'супермаркет': '🛒', 'магазин': '🛍️',
+         'кафе': '☕', 'ресторан': '🍽️', 'кофе': '☕', 'бар': '🍷',
+         'транспорт': '🚇', 'такси': '🚕', 'парков': '🅿️', 'бензин': '⛽',
+         'авто': '🚗', 'мойк': '🚿', 'то': '🔧', 'ремонт': '🔧', 'метро': '🚇',
+         'жил': '🏠', 'дом': '🏠', 'квартир': '🏠', 'аренд': '🏠', 'благоустр': '🛋️',
+         'коммунал': '💡', 'одежд': '👕', 'обув': '👟', 'красот': '💄',
+         'космет': '💄', 'спа': '✨', 'уход': '✨', 'здоров': '🏥', 'аптек': '💊',
+         'медиц': '🏥', 'обслед': '🩺', 'лечен': '💉', 'развлеч': '🎬', 'кино': '🎬',
+         'игр': '🎮', 'спорт': '🏋️', 'фитнес': '🏋️', 'йог': '🧘', 'зож': '🧘',
+         'бад': '💊', 'терапи': '🧠', 'путеш': '✈️', 'поездк': '✈️', 'отпуск': '✈️',
+         'отел': '🏨', 'софия': '👧', 'школ': '🏫', 'секц': '🎒',
+         'зарплат': '💼', 'оклад': '💼', 'доход': '💰', 'бонус': '🎁',
+         'фриланс': '💻', 'клиент': '🤝', 'консульт': '📝', 'юрид': '⚖️',
+         'продаж': '💵', 'комисс': '💸', 'процент': '📊', 'подарок': '🎁',
+         'подарк': '🎁', 'связь': '📱', 'интернет': '📡', 'телефон': '📱',
+         'впн': '🔐', 'vpn': '🔐', 'образован': '📚', 'учеб': '📚', 'курс': '📚',
+         'книг': '📖', 'обучен': '📚', 'животн': '🐾', 'питом': '🐾',
+         'дет': '👶', 'хобби': '🎨', 'налог': '🧾', 'штраф': '🚨',
+         'долг': '💳', 'кредит': '💳', 'инвест': '📈', 'дивиденд': '📈',
+         'накоплен': '🏦', 'депозит': '🏦', 'подписк': '📰',
+         'тушин': '🏢', 'никол': '🔑', 'клиник': '🩺', 'возврат': '🔙', 'случайн': '🎲'}
     for key, icon in m.items():
         if key in c:
             return icon
@@ -310,18 +310,16 @@ def load_data():
         df['Дата'] = pd.to_datetime(df['Дата'], format='%d.%m.%Y', errors='coerce').fillna(
                      pd.to_datetime(df['Дата'], format='%d.%m.%y', errors='coerce'))
         df = df.dropna(subset=['Дата'])
-        # Подкатегория опциональная — если колонки нет, создаём пустую
         if 'Подкатегория' not in df.columns:
             df['Подкатегория'] = ''
         else:
             df['Подкатегория'] = df['Подкатегория'].fillna('').astype(str)
+        df['_year'] = df['Дата'].dt.year
+        df['_month'] = df['Дата'].dt.month
     return df
 
 
 def make_display_category(row, mode='groups'):
-    """Возвращает строку отображения категории в зависимости от режима.
-    mode='groups' → только основная категория (для группировки в одну плашку)
-    mode='subcats' → 'Категория · Подкатегория' если есть подкатегория."""
     cat = str(row.get('Категория', '')).strip()
     sub = str(row.get('Подкатегория', '')).strip()
     if mode == 'groups' or not sub:
@@ -329,18 +327,29 @@ def make_display_category(row, mode='groups'):
     return f"{cat} · {sub}"
 
 
-def get_current_month_income(df):
+def get_monthly_stats(df, year, month):
+    """Доход, расход, баланс за один календарный месяц."""
+    mask = (df['_year'] == year) & (df['_month'] == month)
+    mdf = df[mask]
+    inc = mdf[mdf['Доход/Расход'] == 'Доход']['Сумма'].sum()
+    exp = mdf[mdf['Доход/Расход'] == 'Расход']['Сумма'].sum()
+    return inc, exp, inc - exp
+
+
+def get_all_months(df):
+    """Все (год, месяц) пары с данными, отсортированные от старого к новому."""
     if df.empty:
-        return 0, None, None, 0, 0
-    last_date = df['Дата'].max().date()
-    month_start = last_date.replace(day=1)
-    month_end = last_date
-    days_in_data = (month_end - month_start).days + 1
-    days_in_month = calendar.monthrange(last_date.year, last_date.month)[1]
-    mask = (df['Дата'].dt.date >= month_start) & (df['Дата'].dt.date <= month_end)
-    monthly_df = df[mask]
-    income = monthly_df[monthly_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
-    return income, month_start, month_end, days_in_data, days_in_month
+        return []
+    months = df[['_year', '_month']].drop_duplicates().sort_values(['_year', '_month'])
+    return [(int(r['_year']), int(r['_month'])) for _, r in months.iterrows()]
+
+
+def prev_month(y, m):
+    return (y - 1, 12) if m == 1 else (y, m - 1)
+
+
+def next_month(y, m):
+    return (y + 1, 1) if m == 12 else (y, m + 1)
 
 
 def find_stage(income, stages):
@@ -348,27 +357,6 @@ def find_stage(income, stages):
         if income < target:
             return i, target, emoji, label
     return len(stages) - 1, stages[-1][0], stages[-1][1], stages[-1][2]
-
-
-def get_budget_killers(curr_df, prev_df, top_n=3, mode='groups'):
-    curr_exp = curr_df[curr_df['Доход/Расход'] == 'Расход'].copy()
-    prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход'].copy()
-    if prev_exp.empty:
-        return [], 'no_prev'
-    curr_exp['_disp'] = curr_exp.apply(lambda r: make_display_category(r, mode), axis=1)
-    prev_exp['_disp'] = prev_exp.apply(lambda r: make_display_category(r, mode), axis=1)
-    curr_cats = curr_exp.groupby('_disp')['Сумма'].sum()
-    prev_cats = prev_exp.groupby('_disp')['Сумма'].sum()
-    killers = []
-    for cat, curr_val in curr_cats.items():
-        prev_val = prev_cats.get(cat, 0)
-        if prev_val <= 0:
-            continue
-        pct = (curr_val - prev_val) / prev_val * 100
-        if pct > 10:
-            killers.append({'cat': cat, 'prev': prev_val, 'curr': curr_val, 'pct': pct})
-    killers.sort(key=lambda x: x['pct'], reverse=True)
-    return killers[:top_n], ('ok' if killers else 'no_growth')
 
 
 def pct_change(curr, prev):
@@ -381,30 +369,18 @@ def make_donut(cats, colors_palette, center_label):
     n = len(cats)
     colors_list = [colors_palette[i % len(colors_palette)] for i in range(n)]
     fig = go.Figure(go.Pie(
-        labels=cats.index, values=cats.values,
-        hole=0.74,
+        labels=cats.index, values=cats.values, hole=0.74,
         marker=dict(colors=colors_list, line=dict(color='white', width=4)),
         textinfo='none',
         hovertemplate='<b>%{label}</b><br>%{value:,.0f} ₽<br>%{percent}<extra></extra>',
-        sort=False,
-        pull=[0.015] * n,
-        rotation=90,
-        direction='clockwise',
-    ))
+        sort=False, pull=[0.015] * n, rotation=90, direction='clockwise'))
     total = cats.sum()
     fig.update_layout(
-        height=320,
-        margin=dict(l=8, r=8, t=8, b=8),
-        showlegend=False,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+        height=320, margin=dict(l=8, r=8, t=8, b=8), showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         annotations=[dict(
             text=f"<b style='font-size:24px;color:#0F172A;font-family:Space Grotesk'>{fmt(total)}</b><br><span style='font-size:10px;color:#94A3B8;font-weight:600;letter-spacing:1px'>₽ · {center_label}</span>",
-            x=0.5, y=0.5,
-            font=dict(family='Space Grotesk'),
-            showarrow=False
-        )]
-    )
+            x=0.5, y=0.5, font=dict(family='Space Grotesk'), showarrow=False)])
     return fig
 
 
@@ -417,60 +393,121 @@ try:
     if df.empty:
         st.warning("В таблице нет данных.")
     else:
-        # URL-параметры: cat (категория), sub (подкатегория), type, mode
+        # URL-параметры
         try:
             qp = st.query_params
+            qp_year = qp.get("y", "")
+            qp_month = qp.get("m", "")
             selected_cat = qp.get("cat", "")
             selected_sub = qp.get("sub", "")
             selected_type = qp.get("type", "exp")
-            view_mode = qp.get("mode", "groups")  # 'groups' или 'subcats'
+            view_mode = qp.get("mode", "groups")
         except Exception:
-            selected_cat = ""
-            selected_sub = ""
+            qp_year = qp_month = ""
+            selected_cat = selected_sub = ""
             selected_type = "exp"
             view_mode = "groups"
 
         if view_mode not in ('groups', 'subcats'):
             view_mode = 'groups'
 
-        col_logo, col_date = st.columns([1.5, 1])
-        with col_logo:
-            st.markdown('<div class="logo"><span class="logo-emoji">💎</span>My Finance</div>', unsafe_allow_html=True)
-        with col_date:
-            min_d, max_d = df['Дата'].min().date(), df['Дата'].max().date()
-            period = st.date_input("Период", value=(min_d, max_d), min_value=min_d, max_value=max_d, label_visibility="collapsed")
+        all_months = get_all_months(df)
+        last_year, last_month = all_months[-1]
 
-        if isinstance(period, tuple) and len(period) == 2:
-            p_start, p_end = period[0], period[1]
+        # Выбранный месяц
+        try:
+            sel_year = int(qp_year) if qp_year else last_year
+            sel_month = int(qp_month) if qp_month else last_month
+        except ValueError:
+            sel_year, sel_month = last_year, last_month
+
+        # Если такого месяца нет в данных — берём последний
+        if (sel_year, sel_month) not in all_months:
+            sel_year, sel_month = last_year, last_month
+
+        cur_idx = all_months.index((sel_year, sel_month))
+        has_prev = cur_idx > 0
+        has_next = cur_idx < len(all_months) - 1
+
+        today = date.today()
+        is_current_real_month = (sel_year == today.year and sel_month == today.month)
+
+        # ═══ ЛОГО + СЕЛЕКТОР МЕСЯЦА ═══
+        st.markdown('<div class="logo"><span class="logo-emoji">💎</span>My Finance</div>', unsafe_allow_html=True)
+
+        def build_month_url(y, m, keep_mode=True):
+            params = [f"y={y}", f"m={m}"]
+            if keep_mode and view_mode != 'groups':
+                params.append(f"mode={view_mode}")
+            return "?" + "&".join(params)
+
+        month_label = f"{MONTHS_RU_FULL[sel_month-1]} {sel_year}"
+        today_badge = '<span class="month-today-badge">СЕЙЧАС</span>' if is_current_real_month else ''
+
+        if has_prev:
+            py, pm = all_months[cur_idx - 1]
+            prev_btn = f'<a href="{build_month_url(py, pm)}" target="_self" class="month-btn" title="Предыдущий">‹</a>'
         else:
-            p_start, p_end = min_d, max_d
+            prev_btn = '<span class="month-btn disabled">‹</span>'
 
-        days_count = (p_end - p_start).days + 1
-        f_df = df[(df['Дата'].dt.date >= p_start) & (df['Дата'].dt.date <= p_end)]
+        if has_next:
+            ny, nm = all_months[cur_idx + 1]
+            next_btn = f'<a href="{build_month_url(ny, nm)}" target="_self" class="month-btn" title="Следующий">›</a>'
+        else:
+            next_btn = '<span class="month-btn disabled">›</span>'
 
-        prev_end = p_start - timedelta(days=1)
-        prev_start = prev_end - timedelta(days=days_count - 1)
-        prev_df = df[(df['Дата'].dt.date >= prev_start) & (df['Дата'].dt.date <= prev_end)]
+        st.markdown(
+            '<div class="month-bar">'
+            '<div class="month-selector">'
+            f'{prev_btn}'
+            f'<div class="month-current">{month_label}{today_badge}</div>'
+            f'{next_btn}'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        # Данные за выбранный месяц
+        mask = (df['_year'] == sel_year) & (df['_month'] == sel_month)
+        f_df = df[mask]
+
+        py_full, pm_full = prev_month(sel_year, sel_month)
+        prev_mask = (df['_year'] == py_full) & (df['_month'] == pm_full)
+        prev_df = df[prev_mask]
 
         inc = f_df[f_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
         exp = f_df[f_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
         balance = inc - exp
         savings_rate = (balance / inc * 100) if inc > 0 else 0
-        earn_per_day = inc / days_count if days_count > 0 else 0
-        exp_per_day = exp / days_count if days_count > 0 else 0
-        monthly_pace = (balance / days_count * 30) if days_count > 0 else 0
+
+        # Дни месяца
+        days_in_month = calendar.monthrange(sel_year, sel_month)[1]
+        if is_current_real_month:
+            days_passed = today.day
+        else:
+            days_passed = days_in_month
+        earn_per_day = inc / days_passed if days_passed > 0 else 0
+        exp_per_day = exp / days_passed if days_passed > 0 else 0
         sign = "+" if balance >= 0 else "−"
-        pace_sign = "+" if monthly_pace >= 0 else "−"
 
         prev_inc = prev_df[prev_df['Доход/Расход'] == 'Доход']['Сумма'].sum()
         prev_exp = prev_df[prev_df['Доход/Расход'] == 'Расход']['Сумма'].sum()
         inc_change = pct_change(inc, prev_inc)
         exp_change = pct_change(exp, prev_exp)
 
-        # HERO
+        prev_month_name = MONTHS_RU_FULL[pm_full - 1]
+
+        # Подпись о днях
+        if is_current_real_month:
+            days_caption = f"{days_passed} из {days_in_month} дней"
+        else:
+            days_caption = "полный месяц"
+
+        # ═══ HERO ═══
         st.markdown(
             '<div class="hero">'
             '<div class="hero-label">Общий баланс</div>'
+            f'<div class="hero-month">{month_label} · {days_caption}</div>'
             f'<div class="hero-amount">{sign}{fmt(abs(balance))} ₽</div>'
             '<div class="hero-pills">'
             '<div class="pill"><div class="pill-icon">⚡</div><div class="pill-text">'
@@ -479,23 +516,23 @@ try:
             '<div class="pill"><div class="pill-icon">🎯</div><div class="pill-text">'
             f'<div class="pill-value">{savings_rate:.0f}%</div>'
             '<div class="pill-label">отложила</div></div></div>'
-            '<div class="pill"><div class="pill-icon">🚀</div><div class="pill-text">'
-            f'<div class="pill-value">{pace_sign}{fmt(abs(monthly_pace))} ₽</div>'
-            '<div class="pill-label">темп за месяц</div></div></div>'
+            '<div class="pill"><div class="pill-icon">📅</div><div class="pill-text">'
+            f'<div class="pill-value">{fmt(exp_per_day)} ₽</div>'
+            '<div class="pill-label">в день трачу</div></div></div>'
             '</div></div>',
             unsafe_allow_html=True
         )
 
-        # KPI
+        # ═══ KPI ═══
         def delta_html(change, good_when_positive=True):
             if change is None:
-                return '<div class="kpi-delta delta-neutral">— нет данных за прошлый период</div>'
+                return f'<div class="kpi-delta delta-neutral">— нет данных за {prev_month_name}</div>'
             is_positive = change >= 0
             is_good = (is_positive == good_when_positive)
             cls = 'delta-good' if is_good else 'delta-bad'
             arrow = '↑' if is_positive else '↓'
             sign_str = '+' if is_positive else ''
-            return f'<div class="kpi-delta {cls}"><span>{arrow}</span> {sign_str}{change:.1f}% vs прошлый период</div>'
+            return f'<div class="kpi-delta {cls}"><span>{arrow}</span> {sign_str}{change:.1f}% vs {prev_month_name}</div>'
 
         st.markdown(
             '<div class="kpi-grid">'
@@ -508,40 +545,30 @@ try:
             unsafe_allow_html=True
         )
 
-        # ═══ ФИНАНСОВАЯ ЛЕСТНИЦА ═══
-        monthly_income, m_start, m_end, days_in_data, days_in_month = get_current_month_income(df)
-        stage_idx, stage_target, stage_emoji, stage_label = find_stage(monthly_income, INCOME_STAGES)
-        stage_pct = min((monthly_income / stage_target * 100), 100) if stage_target else 0
-        remaining = max(0, stage_target - monthly_income)
-
-        if m_start:
-            month_name = f"{MONTHS_RU_FULL[m_start.month-1]} {m_start.year}"
-            if days_in_data < days_in_month:
-                month_caption = f"{month_name} · {days_in_data} из {days_in_month} дней"
-            else:
-                month_caption = f"{month_name} · полный месяц"
-        else:
-            month_caption = "—"
+        # ═══ ФИНАНСОВАЯ ЛЕСТНИЦА (по выбранному месяцу) ═══
+        stage_idx, stage_target, stage_emoji, stage_label = find_stage(inc, INCOME_STAGES)
+        stage_pct = min((inc / stage_target * 100), 100) if stage_target else 0
+        remaining = max(0, stage_target - inc)
 
         st.markdown(
             '<div class="section">'
             '<div><div class="section-title">🚀 Финансовая лестница</div>'
-            f'<div class="section-sub">Доход в {month_caption}</div></div>'
+            f'<div class="section-sub">Доход в {month_label}</div></div>'
             '</div>', unsafe_allow_html=True
         )
 
-        is_final = (monthly_income >= INCOME_STAGES[-1][0])
+        is_final = (inc >= INCOME_STAGES[-1][0])
         if is_final:
             ladder_hero = ('<div class="ladder-hero">'
                 f'<div class="ladder-hero-label">🏆 ФИНАЛ ДОСТИГНУТ · этап {len(INCOME_STAGES)} из {len(INCOME_STAGES)}</div>'
-                f'<div class="ladder-hero-amount"><div class="now">{fmt(monthly_income)} ₽/мес</div></div>'
+                f'<div class="ladder-hero-amount"><div class="now">{fmt(inc)} ₽/мес</div></div>'
                 '<div class="ladder-bar-wrap"><div class="ladder-bar" style="width:100%;"></div></div>'
                 '<div class="ladder-bar-info"><span>🎉 Все ступени взяты</span></div>'
                 '</div>')
         else:
             ladder_hero = ('<div class="ladder-hero">'
                 f'<div class="ladder-hero-label">Текущий этап: {stage_idx+1} из {len(INCOME_STAGES)} · {stage_label}</div>'
-                f'<div class="ladder-hero-amount"><div class="now">{fmt(monthly_income)} ₽</div>'
+                f'<div class="ladder-hero-amount"><div class="now">{fmt(inc)} ₽</div>'
                 f'<div class="target">/ {fmt(stage_target)} ₽ в месяц</div></div>'
                 f'<div class="ladder-bar-wrap"><div class="ladder-bar" style="width:{stage_pct:.1f}%;"></div></div>'
                 '<div class="ladder-bar-info">'
@@ -552,7 +579,7 @@ try:
 
         parts = ['<div class="ladder-list">', '<div class="ladder-list-title">Весь путь до 10 млн ₽</div>']
         for i, (target, emoji, label) in enumerate(INCOME_STAGES):
-            is_done = monthly_income >= target
+            is_done = inc >= target
             is_current = (i == stage_idx) and not is_done
             is_final_stage = (i == len(INCOME_STAGES) - 1)
             if is_done:
@@ -575,47 +602,66 @@ try:
         parts.append('</div>')
         st.markdown(''.join(parts), unsafe_allow_html=True)
 
-        # ═══ УБИЙЦЫ БЮДЖЕТА (учитывают режим) ═══
-        killers, kstatus = get_budget_killers(f_df, prev_df, top_n=3, mode=view_mode)
+        # ═══ УБИЙЦЫ БЮДЖЕТА (категории, выросшие vs прошлый месяц) ═══
+        curr_exp_df = f_df[f_df['Доход/Расход'] == 'Расход'].copy()
+        prev_exp_df = prev_df[prev_df['Доход/Расход'] == 'Расход'].copy()
+
         st.markdown(
             '<div class="section">'
             '<div><div class="section-title">🚨 Убийцы бюджета</div>'
-            '<div class="section-sub">Где траты выросли больше всего vs прошлый период</div></div>'
+            f'<div class="section-sub">Где траты выросли больше всего vs {prev_month_name}</div></div>'
             '</div>', unsafe_allow_html=True
         )
-        if kstatus == 'ok':
-            kparts = ['<div class="killer-list">']
-            for k in killers:
-                pct_val = k['pct']
-                if pct_val >= 100:
-                    color = '#EF4444'; label_txt = '↑ резкий рост'
-                elif pct_val >= 50:
-                    color = '#F59E0B'; label_txt = '↑ умеренно'
-                else:
-                    color = '#EC4899'; label_txt = '↑ небольшой'
-                bg = color + '2E'
-                kparts.append('<div class="killer-row">'
-                    f'<div class="killer-icon" style="background:{bg}; color:{color};">{cat_icon(k["cat"])}</div>'
-                    '<div class="killer-info">'
-                    f'<div class="killer-name">{html_lib.escape(str(k["cat"]))}</div>'
-                    f'<div class="killer-trend">{fmt(k["prev"])} ₽ → {fmt(k["curr"])} ₽</div></div>'
-                    '<div class="killer-right">'
-                    f'<div class="killer-pct" style="color:{color};">+{pct_val:.0f}%</div>'
-                    f'<div class="killer-label" style="color:{color};">{label_txt}</div></div></div>')
-            kparts.append('</div>')
-            st.markdown(''.join(kparts), unsafe_allow_html=True)
-        elif kstatus == 'no_growth':
-            st.markdown('<div class="empty-card"><div class="empty-emoji">🎉</div>'
-                '<div class="empty-title">Расходы не растут!</div>'
-                '<div class="empty-text">По всем категориям траты ниже или сопоставимы с прошлым периодом.</div>'
-                '</div>', unsafe_allow_html=True)
-        else:
+
+        if prev_exp_df.empty:
             st.markdown('<div class="empty-card"><div class="empty-emoji">📅</div>'
                 '<div class="empty-title">Не с чем сравнивать</div>'
-                '<div class="empty-text">Нет данных за прошлый период такой же длины.</div>'
+                f'<div class="empty-text">В {prev_month_name} ещё не было трат, не получится сравнить.</div>'
                 '</div>', unsafe_allow_html=True)
+        else:
+            curr_exp_df['_disp'] = curr_exp_df.apply(lambda r: make_display_category(r, view_mode), axis=1)
+            prev_exp_df['_disp'] = prev_exp_df.apply(lambda r: make_display_category(r, view_mode), axis=1)
+            curr_cats = curr_exp_df.groupby('_disp')['Сумма'].sum()
+            prev_cats = prev_exp_df.groupby('_disp')['Сумма'].sum()
+            killers = []
+            for cat, curr_val in curr_cats.items():
+                prev_val = prev_cats.get(cat, 0)
+                if prev_val <= 0:
+                    continue
+                pct = (curr_val - prev_val) / prev_val * 100
+                if pct > 10:
+                    killers.append({'cat': cat, 'prev': prev_val, 'curr': curr_val, 'pct': pct})
+            killers.sort(key=lambda x: x['pct'], reverse=True)
+            killers = killers[:3]
 
-        # ═══ CASH FLOW ═══
+            if killers:
+                kparts = ['<div class="killer-list">']
+                for k in killers:
+                    pct_val = k['pct']
+                    if pct_val >= 100:
+                        color = '#EF4444'; label_txt = '↑ резкий рост'
+                    elif pct_val >= 50:
+                        color = '#F59E0B'; label_txt = '↑ умеренно'
+                    else:
+                        color = '#EC4899'; label_txt = '↑ небольшой'
+                    bg = color + '2E'
+                    kparts.append('<div class="killer-row">'
+                        f'<div class="killer-icon" style="background:{bg}; color:{color};">{cat_icon(k["cat"])}</div>'
+                        '<div class="killer-info">'
+                        f'<div class="killer-name">{html_lib.escape(str(k["cat"]))}</div>'
+                        f'<div class="killer-trend">{fmt(k["prev"])} ₽ → {fmt(k["curr"])} ₽</div></div>'
+                        '<div class="killer-right">'
+                        f'<div class="killer-pct" style="color:{color};">+{pct_val:.0f}%</div>'
+                        f'<div class="killer-label" style="color:{color};">{label_txt}</div></div></div>')
+                kparts.append('</div>')
+                st.markdown(''.join(kparts), unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="empty-card"><div class="empty-emoji">🎉</div>'
+                    '<div class="empty-title">Расходы не растут!</div>'
+                    f'<div class="empty-text">По всем категориям траты ниже или сопоставимы с {prev_month_name}. Так держать!</div>'
+                    '</div>', unsafe_allow_html=True)
+
+        # ═══ CASH FLOW (по дням месяца) ═══
         st.markdown('<div class="section"><div class="section-title">📊 Cash Flow</div><div class="section-sub">Динамика по дням</div></div>', unsafe_allow_html=True)
         daily = f_df.groupby([f_df['Дата'].dt.date, 'Доход/Расход'])['Сумма'].sum().reset_index()
         d_inc = daily[daily['Доход/Расход'] == 'Доход']
@@ -661,7 +707,7 @@ try:
                     cat_url = urllib.parse.quote(str(cat))
                     active = " active-inc" if (str(cat) == selected_cat and selected_type == 'inc') else ""
                     cat_safe = html_lib.escape(str(cat))
-                    lparts.append(f'<a href="?cat={cat_url}&type=inc&mode={view_mode}" target="_self" class="cat-link{active}"><div class="cat-row">'
+                    lparts.append(f'<a href="?y={sel_year}&m={sel_month}&cat={cat_url}&type=inc&mode={view_mode}" target="_self" class="cat-link{active}"><div class="cat-row">'
                         f'<div class="cat-icon" style="{icon_3d_style(color)}">{cat_icon(cat)}</div>'
                         f'<div class="cat-info"><div class="cat-name">{cat_safe}</div>'
                         f'<div class="cat-bar-wrap"><div class="cat-bar" style="width:{pct:.1f}%; {bar_gradient(color)}"></div></div></div>'
@@ -670,18 +716,17 @@ try:
                 lparts.append('</div>')
                 st.markdown(''.join(lparts), unsafe_allow_html=True)
 
-        # ═══ СТРУКТУРА РАСХОДОВ С РЕЖИМОМ ═══
+        # ═══ СТРУКТУРА РАСХОДОВ ═══
         exp_df_raw = f_df[f_df['Доход/Расход'] == 'Расход'].copy()
-
+        cats = pd.Series(dtype=float)
         if not exp_df_raw.empty:
-            # Создаём колонку отображения в зависимости от режима
             exp_df_raw['_disp'] = exp_df_raw.apply(lambda r: make_display_category(r, view_mode), axis=1)
             cats = exp_df_raw.groupby('_disp')['Сумма'].sum().sort_values(ascending=False)
             total = cats.sum()
 
-            # Переключатель
-            groups_url = "?mode=groups"
-            subcats_url = "?mode=subcats"
+            base_url = f"?y={sel_year}&m={sel_month}"
+            groups_url = f"{base_url}&mode=groups"
+            subcats_url = f"{base_url}&mode=subcats"
             if selected_cat:
                 groups_url += f"&cat={urllib.parse.quote(selected_cat)}&type={selected_type}"
                 subcats_url += f"&cat={urllib.parse.quote(selected_cat)}&type={selected_type}"
@@ -712,12 +757,11 @@ try:
                 for i, (disp_cat, val) in enumerate(cats.items()):
                     pct = (val / total * 100)
                     color = CAT_COLORS[i % len(CAT_COLORS)]
-                    # Передаём cat (категорию) и sub (подкатегорию) отдельно
                     if ' · ' in disp_cat:
                         cat_part, sub_part = disp_cat.split(' · ', 1)
                     else:
                         cat_part, sub_part = disp_cat, ''
-                    url = f"?cat={urllib.parse.quote(cat_part)}&sub={urllib.parse.quote(sub_part)}&type=exp&mode={view_mode}"
+                    url = f"?y={sel_year}&m={sel_month}&cat={urllib.parse.quote(cat_part)}&sub={urllib.parse.quote(sub_part)}&type=exp&mode={view_mode}"
                     active = " active" if (cat_part == selected_cat and sub_part == selected_sub and selected_type == 'exp') else ""
                     cat_safe = html_lib.escape(str(disp_cat))
                     lparts.append(f'<a href="{url}" target="_self" class="cat-link{active}"><div class="cat-row">'
@@ -733,6 +777,10 @@ try:
         if selected_cat:
             tx_df = None
             display_title = selected_cat
+            color = '#4F46E5'
+            amount_class = 'exp'; amount_sign = '−'
+            cat_total = 0
+
             if selected_type == 'inc' and not inc_df.empty and selected_cat in inc_df['Категория'].values:
                 cats_set = inc_df.groupby('Категория')['Сумма'].sum().sort_values(ascending=False)
                 cat_total = cats_set[selected_cat]
@@ -741,44 +789,36 @@ try:
                 tx_df = inc_df[inc_df['Категория'] == selected_cat].sort_values('Дата', ascending=False)
                 amount_class = 'inc'; amount_sign = '+'
             elif selected_type == 'exp' and not exp_df_raw.empty:
-                # Фильтруем по категории + подкатегории
                 if selected_sub:
                     tx_df = exp_df_raw[(exp_df_raw['Категория'] == selected_cat) &
                                        (exp_df_raw['Подкатегория'] == selected_sub)].sort_values('Дата', ascending=False)
                     display_title = f"{selected_cat} · {selected_sub}"
                 else:
-                    # Только основная категория, без подкатегории
                     if view_mode == 'groups':
-                        # В режиме групп — берём всё что относится к этой основной категории
                         tx_df = exp_df_raw[exp_df_raw['Категория'] == selected_cat].sort_values('Дата', ascending=False)
                     else:
-                        # В режиме детально — без подкатегории
                         tx_df = exp_df_raw[(exp_df_raw['Категория'] == selected_cat) &
                                            (exp_df_raw['Подкатегория'] == '')].sort_values('Дата', ascending=False)
                 if tx_df is not None and not tx_df.empty:
                     cat_total = tx_df['Сумма'].sum()
-                    # Цвет берём по индексу в общем списке
-                    all_cats_list = list(cats.index)
                     try:
-                        idx = all_cats_list.index(display_title if view_mode == 'subcats' and selected_sub else selected_cat)
+                        idx = list(cats.index).index(display_title if selected_sub else selected_cat)
                     except ValueError:
                         idx = 0
                     color = CAT_COLORS[idx % len(CAT_COLORS)]
-                    amount_class = 'exp'; amount_sign = '−'
-                else:
-                    tx_df = None
 
             if tx_df is not None and not tx_df.empty:
                 icon = cat_icon(display_title)
                 tx_count = len(tx_df)
                 extra_cols = [c for c in tx_df.columns if c not in
                               ['Сумма', 'Категория', 'Доход/Расход', 'Дата',
-                               'Валюта', 'Источник', 'Теги', 'Подкатегория', '_disp']]
+                               'Валюта', 'Источник', 'Теги', 'Подкатегория',
+                               '_disp', '_year', '_month']]
 
                 st.markdown(f'<div class="section"><div class="section-title">📋 {html_lib.escape(str(display_title))}</div><div class="section-sub">Все операции в категории</div></div>', unsafe_allow_html=True)
 
                 cat_safe = html_lib.escape(str(display_title))
-                back_url = f"?mode={view_mode}"
+                back_url = f"?y={sel_year}&m={sel_month}&mode={view_mode}"
                 dparts = ['<div class="tx-card">', '<div class="tx-header">',
                     f'<div class="tx-header-icon" style="{icon_3d_style(color)}">{icon}</div>',
                     '<div class="tx-header-info">',
@@ -789,7 +829,7 @@ try:
                     '</div>']
                 for _, tx in tx_df.iterrows():
                     day = tx['Дата'].day
-                    month = MONTHS_RU[tx['Дата'].month - 1]
+                    month_lbl = MONTHS_RU[tx['Дата'].month - 1]
                     amount = tx['Сумма']
                     desc = ""
                     for c in extra_cols:
@@ -798,17 +838,108 @@ try:
                             desc = str(v).strip()
                             break
                     if not desc:
-                        # Если описания нет, попробуем подкатегорию
                         sub = str(tx.get('Подкатегория', '')).strip()
                         desc = sub if sub else str(display_title)
                     dparts.append('<div class="tx-row">'
                         '<div class="tx-date">'
-                        f'<div class="tx-day">{day}</div><div class="tx-month">{month}</div></div>'
+                        f'<div class="tx-day">{day}</div><div class="tx-month">{month_lbl}</div></div>'
                         f'<div class="tx-desc">{html_lib.escape(desc)}</div>'
                         f'<div class="tx-amount {amount_class}">{amount_sign}{fmt(amount)} ₽</div>'
                         '</div>')
                 dparts.append('</div>')
                 st.markdown(''.join(dparts), unsafe_allow_html=True)
+
+        # ═══ ИСТОРИЯ ПО МЕСЯЦАМ ═══
+        st.markdown(
+            '<div class="section">'
+            '<div><div class="section-title">📅 История по месяцам</div>'
+            '<div class="section-sub">Доходы, расходы и баланс за всё время</div></div>'
+            '</div>', unsafe_allow_html=True
+        )
+
+        # Бар-чарт всех месяцев
+        months_data = []
+        for (y, m) in all_months:
+            mi, me, mb = get_monthly_stats(df, y, m)
+            months_data.append({'y': y, 'm': m, 'inc': mi, 'exp': me, 'bal': mb})
+
+        if months_data:
+            labels = [f"{MONTHS_RU[md['m']-1]} {str(md['y'])[2:]}" for md in months_data]
+            inc_vals = [md['inc'] for md in months_data]
+            exp_vals = [md['exp'] for md in months_data]
+
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Bar(
+                x=labels, y=inc_vals, name='Доход',
+                marker=dict(color='#00C896',
+                            line=dict(color='#00A578', width=0)),
+                hovertemplate='<b>+%{y:,.0f} ₽</b><extra>Доход</extra>'
+            ))
+            fig_hist.add_trace(go.Bar(
+                x=labels, y=exp_vals, name='Расход',
+                marker=dict(color='#FF5757',
+                            line=dict(color='#E13C3C', width=0)),
+                hovertemplate='<b>−%{y:,.0f} ₽</b><extra>Расход</extra>'
+            ))
+            fig_hist.update_layout(
+                barmode='group',
+                height=320,
+                margin=dict(l=0, r=0, t=20, b=0),
+                plot_bgcolor='white', paper_bgcolor='white',
+                font=dict(family='Plus Jakarta Sans'),
+                xaxis=dict(showgrid=False, showline=False, tickfont=dict(size=12, color='#475569', family='Space Grotesk')),
+                yaxis=dict(showgrid=True, gridcolor='#F1F5F9', showline=False, zeroline=False, tickformat=',', tickfont=dict(size=11, color='#94A3B8')),
+                legend=dict(orientation='h', yanchor='bottom', y=1.05, xanchor='right', x=1, font=dict(size=12, color='#475569'), bgcolor='rgba(0,0,0,0)'),
+                bargap=0.35, bargroupgap=0.1
+            )
+
+            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(fig_hist, use_container_width=True, config={'displayModeBar': False})
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # Карточки месяцев (от нового к старому, максимум 12)
+            recent_months = list(reversed(months_data))[:12]
+            mparts = ['<div class="month-cards">']
+            max_total = max([md['inc'] + md['exp'] for md in recent_months]) or 1
+            for md in recent_months:
+                is_selected = (md['y'] == sel_year and md['m'] == sel_month)
+                is_now = (md['y'] == today.year and md['m'] == today.month)
+                month_name_short = MONTHS_RU_FULL[md['m']-1]
+                year_label = f"{md['y']}"
+                if is_now:
+                    year_label += " · сейчас"
+                bal = md['bal']
+                bal_class = 'pos' if bal >= 0 else 'neg'
+                bal_sign = '+' if bal >= 0 else '−'
+                total_m = md['inc'] + md['exp']
+                if total_m > 0:
+                    inc_flex = (md['inc'] / total_m) * 100
+                    exp_flex = (md['exp'] / total_m) * 100
+                else:
+                    inc_flex = exp_flex = 0
+                card_class = 'mcard current' if is_selected else 'mcard'
+                url = f"?y={md['y']}&m={md['m']}"
+                if view_mode != 'groups':
+                    url += f"&mode={view_mode}"
+                mparts.append(
+                    f'<a class="{card_class}" href="{url}" target="_self">'
+                    '<div class="mcard-head">'
+                    f'<div class="mcard-month">{month_name_short}</div>'
+                    f'<div class="mcard-year">{year_label}</div>'
+                    '</div>'
+                    f'<div class="mcard-balance {bal_class}">{bal_sign}{fmt(abs(bal))} ₽</div>'
+                    '<div class="mcard-bars">'
+                    f'<div class="mcard-bar-inc" style="flex: {inc_flex:.1f}"></div>'
+                    f'<div class="mcard-bar-exp" style="flex: {exp_flex:.1f}"></div>'
+                    '</div>'
+                    '<div class="mcard-stats">'
+                    f'<span class="inc">+{fmt(md["inc"])}</span>'
+                    f'<span class="exp">−{fmt(md["exp"])}</span>'
+                    '</div>'
+                    '</a>'
+                )
+            mparts.append('</div>')
+            st.markdown(''.join(mparts), unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"Упс! Что-то пошло не так: {e}")
