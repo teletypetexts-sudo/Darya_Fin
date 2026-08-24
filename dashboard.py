@@ -1,3 +1,5 @@
+import os
+import json
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
@@ -289,11 +291,17 @@ def fmt(n):
 
 
 def get_credentials(scopes):
+    # 1) Railway / любой сервер: переменная окружения GOOGLE_CREDS_JSON
+    creds_json = os.environ.get('GOOGLE_CREDS_JSON')
+    if creds_json:
+        return Credentials.from_service_account_info(json.loads(creds_json), scopes=scopes)
+    # 2) Streamlit Cloud: st.secrets
     try:
         if "gcp_service_account" in st.secrets:
             return Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
     except Exception:
         pass
+    # 3) Локально: файл
     return Credentials.from_service_account_file('credentials.json', scopes=scopes)
 
 
